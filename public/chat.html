@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wappy 🍉 Chat</title>
+    
+    <script>
+        (function() {
+            if (localStorage.getItem('theme') === 'dark' || 
+                (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
+    </script>
+    
+    <script src="/socket.io/socket.io.js"></script>
+    <link rel="stylesheet" href="style.css">
+    
+    <style>
+        /* (Saara CSS Kadam 34/35 waala) */
+        body { background-color: #E5DDD5; background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); background-attachment: fixed; }
+        .dark body { background-color: #0b141a; background-image: url('https://bg.wpp.chat/d/dark.png'); }
+        .bubble { position: relative; max-width: 70%; padding: 8px 12px; border-radius: 8px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); overflow-wrap: break-word; word-wrap: break-word; user-select: none; }
+        .bubble::before { content: ""; position: absolute; top: 0; width: 12px; height: 12px; }
+        .bubble-sender { background-color: #DCF8C6; align-self: flex-end; color: #0F172A; cursor: pointer; }
+        .bubble-sender::before { right: -8px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13' width='8' height='13'%3E%3Cpath opacity='.13' d='M5.188 1H0v11.193l6.467-8.625C7.526 2.156 6.958 1 5.188 1z'/%3E%3Cpath fill='%23DCF8C6' d='M5.188 0H0v11.193l6.467-8.625C7.526 1.156 6.958 0 5.188 0z'/%3E%3C/svg%3E"); }
+        .dark .bubble-sender { background-color: #005C4B; color: #E9EDEF; }
+        .dark .bubble-sender::before { right: -8px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13' width='8' height='13'%3E%3Cpath opacity='.13' d='M5.188 1H0v11.193l6.467-8.625C7.526 2.156 6.958 1 5.188 1z'/%3E%3Cpath fill='%23005C4B' d='M5.188 0H0v11.193l6.467-8.625C7.526 1.156 6.958 0 5.188 0z'/%3E%3C/svg%3E"); }
+        .bubble-receiver { background-color: #FFFFFF; align-self: flex-start; color: #0F172A; cursor: pointer; }
+        .bubble-receiver::before { left: -8px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13' width='8' height='13'%3E%3Cpath opacity='.13' d='M2.812 1H8v11.193L1.533 3.568C.474 2.156 1.042 1 2.812 1z'/%3E%3Cpath fill='%23FFFFFF' d='M2.812 0H8v11.193L1.533 2.568C.474 1.156 1.042 0 2.812 0z'/%3E%3C/svg%3E"); }
+        .dark .bubble-receiver { background-color: #202C33; color: #E9EDEF; }
+        .dark .bubble-receiver::before { left: -8px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 13' width='8' height='13'%3E%3Cpath opacity='.13' d='M2.812 1H8v11.193L1.533 3.568C.474 2.156 1.042 1 2.812 1z'/%3E%3Cpath fill='%23202C33' d='M2.812 0H8v11.193L1.533 2.568C.474 1.156 1.042 0 2.812 0z'/%3E%3C/svg%3E"); }
+        .sender-name { font-size: 0.8rem; font-weight: 600; color: #00A884; margin-bottom: 2px; }
+        .dark .sender-name { color: #00A884; }
+        .bubble-meta { font-size: 0.75rem; color: #6B7280; text-align: right; margin-top: 4px; }
+        .dark .bubble-meta { color: #8696A0; }
+        .delete-menu { display: none; position: absolute; background-color: white; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 100; width: 180px; overflow: hidden; }
+        .dark .delete-menu { background-color: #202C33; }
+        .delete-menu a { display: block; padding: 10px 15px; color: black; text-decoration: none; }
+        .dark .delete-menu a { color: #E9EDEF; }
+        .delete-menu a:hover { background-color: #f1f1f1; }
+        .dark .delete-menu a:hover { background-color: #182229; }
+        .deleted-message { font-style: italic; color: #6B7280; }
+        .dark .deleted-message { color: #8696A0; }
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown-content { display: none; position: absolute; right: 0; top: 100%; background-color: white; min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 20; border-radius: 4px; }
+        .dark .dropdown-content { background-color: #202C33; }
+        .dropdown-content a { color: black; padding: 12px 16px; text-decoration: none; display: block; }
+        .dark .dropdown-content a { color: #E9EDEF; }
+        .dropdown-content a:hover { background-color: #f1f1f1; }
+        .dark .dropdown-content a:hover { background-color: #182229; }
+        #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 4px; padding: 16px; position: fixed; z-index: 100; left: 50%; transform: translateX(-50%); bottom: 30px; transition: visibility 0s, opacity 0.5s linear; opacity: 0; }
+        #toast.show { visibility: visible; opacity: 1; }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #messages li.new-message {
+            animation: fadeInUp 0.3s ease-out;
+        }
+        #loading-spinner {
+            display: none;
+            margin: 10px auto;
+            width: 30px;
+            height: 30px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        .dark #loading-spinner {
+            border: 4px solid #444;
+            border-top: 4px solid #3498db;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .hidden {
+            display: none;
+        }
+        #context-menu-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 40;
+        }
+        #context-menu {
+            position: absolute;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 50;
+            overflow: hidden;
+            display: none;
+        }
+        .dark #context-menu {
+            background-color: #202C33;
+        }
+        #context-menu button {
+            display: block;
+            width: 100%;
+            padding: 12px 16px;
+            background: none;
+            border: none;
+            text-align: left;
+            color: #0F172A;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        .dark #context-menu button {
+            color: #E9EDEF;
+        }
+        #context-menu button:hover {
+            background-color: #f1f1f1;
+        }
+        .dark #context-menu button:hover {
+            background-color: #182229;
+        }
+        .bubble.highlighted {
+            filter: brightness(0.9);
+        }
+        #reply-preview {
+            padding: 8px 12px;
+            background-color: #f0f2f5;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .dark #reply-preview {
+            background-color: #2a3942;
+            border-bottom: 1px solid #374151;
+        }
+        .reply-preview-content {
+            background-color: #FFFFFF;
+            border-radius: 8px;
+            padding: 6px 10px;
+            border-left: 4px solid #00A884;
+        }
+        .dark .reply-preview-content {
+            background-color: #202C33;
+        }
+        .reply-preview-sender {
+            font-weight: 600;
+            color: #00A884;
+            font-size: 0.9rem;
+        }
+        .reply-preview-text {
+            font-size: 0.9rem;
+            color: #6B7280;
+        }
+        .dark .reply-preview-text {
+            color: #9CA3AF;
+        }
+        .bubble-reply {
+            background-color: #f0f2f5;
+            border-radius: 6px;
+            padding: 6px 10px;
+            margin-bottom: 6px;
+            border-left: 4px solid #00A884;
+            cursor: pointer;
+        }
+        .dark .bubble-reply {
+            background-color: #182229;
+        }
+        .bubble-reply-sender {
+            font-weight: 600;
+            color: #00A884;
+            font-size: 0.8rem;
+        }
+        .bubble-reply-text {
+            font-size: 0.9rem;
+            color: #374151;
+        }
+        .dark .bubble-reply-text {
+             color: #E9EDEF;
+        }
+        .star-icon {
+            font-size: 0.7rem;
+            color: #fbbf24;
+            margin-right: 4px;
+            display: none;
+        }
+        .dark .star-icon {
+            color: #facc15;
+        }
+        .bubble.starred .star-icon {
+            display: inline;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen">
+
+    <header class="bg-green-600 dark:bg-gray-800 text-white p-2 flex justify-between items-center shadow-md sticky top-0 z-10">
+        <div class="flex items-center">
+            <a href="/chats.html" class="mr-2 text-2xl p-1">←</a>
+            <img id="friend-avatar" src="placeholder.jpg" class="w-9 h-9 rounded-full object-cover mr-3 border-2 border-white">
+            <div>
+                <h1 id="friend-name" class="text-lg font-bold">Loading...</h1>
+                <span id="friend-status" class="text-sm font-light">...</span>
+            </div>
+        </div>
+        <div class="dropdown">
+            <button id="menu-btn" class="p-2 rounded-full hover:bg-green-700 dark:hover:bg-gray-700">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path></svg>
+            </button>
+            <div id="menu-dropdown" class="dropdown-content">
+                <a href="/logout">Logout</a>
+                <a href="#" id="block-btn">Block User</a>
+            </div>
+        </div>
+    </header>
+
+    <ul id="messages" class="flex-1 p-4 overflow-y-auto space-y-3 flex flex-col">
+        <li id="loading-spinner" class="hidden flex justify-center p-4">
+             <div style="width: 30px; height: 30px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        </li>
+    </ul>
+
+    <div class="sticky bottom-0 bg-white dark:bg-gray-800 shadow-inner">
+        <div id="reply-preview" class="hidden">
+            <div class="flex justify-between items-center p-2">
+                <div class="reply-preview-content flex-1">
+                    <div id="reply-sender" class="reply-preview-sender">Replying to...</div>
+                    <div id="reply-text" class="reply-preview-text">...</div>
+                </div>
+                <button id="cancel-reply-btn" class="p-2 text-gray-500 dark:text-gray-400 text-2xl">&times;</button>
+            </div>
+        </div>
+    
+        <form id="form" class="flex p-2 items-center">
+            <input id="input" autocomplete="off" class="flex-1 border rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-green-400 bg-white dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" placeholder="Type a message..." />
+            <button id="send-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold p-3 rounded-full ml-2">
+                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.886l-7.05 4.935A1 1 0 003 8.76v.014l4.286 1.714a1 1 0 001.213-.865l.024-1.259 3.014-2.11a.5.5 0 01.604.604l-2.11 3.014-1.259.024a1 1 0 00-.865 1.213l1.714 4.286v.014a1 1 0 00.939.809l4.935-7.05a1 1 0 00-1.789-1.258z"></path></svg>
+            </button>
+        </form>
+    </div>
+
+    <div id="context-menu-overlay" class="hidden"></div>
+    <div id="context-menu">
+        <button id="ctx-reply">Reply</button>
+        <button id="ctx-star">Star</button>
+        <button id="ctx-forward">Forward</button>
+        <button id="ctx-copy">Copy</button>
+        <button id="ctx-delete-me">Delete for me</button>
+        <button id="ctx-delete-everyone">Delete for everyone</button>
+    </div>
+
+    <div id="toast"></div>
+    <script>
+        const socket = io();
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const sendBtn = document.getElementById('send-btn');
+        const messages = document.getElementById('messages');
+        const friendNameHeader = document.getElementById('friend-name');
+        const friendStatusHeader = document.getElementById('friend-status');
+        const friendAvatarHeader = document.getElementById('friend-avatar');
+        const menuBtn = document.getElementById('menu-btn');
+        const menuDropdown = document.getElementById('menu-dropdown');
+        const blockBtn = document.getElementById('block-btn');
+        const toast = document.getElementById('toast');
+        const loadingSpinner = document.getElementById('loading-spinner'); 
+        
+        // Context Menu
+        const contextMenuOverlay = document.getElementById('context-menu-overlay');
+        const contextMenu = document.getElementById('context-menu');
+        const ctxReplyBtn = document.getElementById('ctx-reply');
+        const ctxStarBtn = document.getElementById('ctx-star'); // NAYA
+        const ctxDeleteMeBtn = document.getElementById('ctx-delete-me');
+        const ctxDeleteEveryoneBtn = document.getElementById('ctx-delete-everyone');
+        
+        // Reply Preview
+        const replyPreview = document.getElementById('reply-preview');
+        const replySenderEl = document.getElementById('reply-sender');
+        const replyTextEl = document.getElementById('reply-text');
+        const cancelReplyBtn = document.getElementById('cancel-reply-btn');
+        
+        let currentContextMenuMsgId = null;
+        let currentContextMenuBubble = null;
+        let longPressTimer;
+        
+        let myEmail = '';
+        let chatId = '';
+        let isGroupChat = false; 
+        let friendBaseStatus = 'Offline';
+        let isBlocked = false;
+        let typingTimer;
+        let isLoading = true;
+        let messageQueue = []; 
+        let updateQueue = []; 
+        let deleteQueue = []; 
+        let removeQueue = [];
+        let starQueue = []; // NAYA
+        
+        let currentCursor = Date.now();
+        let hasMoreMessages = true;
+        let isLoadingMore = false;
+        
+        let currentReplyTo = null; // { messageId, text, senderName }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        chatId = urlParams.get('id'); 
+        if (!chatId) { window.location.href = '/chats.html'; }
+        isGroupChat = !chatId.includes('@');
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+        }
+        function getTicks(status) {
+            if (status === 'sending') { return '<span class="text-gray-500 ml-1">🕒</span>'; }
+            if (status === 'seen') { return '<span class="text-blue-500 ml-1">✓✓</span>'; }
+            if (status === 'delivered') { return '<span class="text-gray-500 ml-1">✓✓</span>'; }
+            return '<span class="text-gray-500 ml-1">✓</span>';
+        }
+        function showToast(message) {
+            toast.textContent = message;
+            toast.className = "show";
+            setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+        }
+        async function loadChatData() {
+            if (!chatId) return; 
+            try {
+                isLoading = true;
+                const meResponse = await fetch('/api/me');
+                const me = await meResponse.json();
+                myEmail = me.email;
+                const infoUrl = isGroupChat ? `/api/groupinfo/${chatId}` : `/api/userinfo/${chatId}`;
+                const infoResponse = await fetch(infoUrl);
+                if (!infoResponse.ok) { throw new Error('Could not load chat info'); }
+                const chatInfo = await infoResponse.json();
+                friendNameHeader.textContent = chatInfo.displayName || chatInfo.groupName;
+                if (isGroupChat) {
+                    friendStatusHeader.textContent = `${chatInfo.members.length} members`;
+                    blockBtn.style.display = 'none'; 
+                } else {
+                    friendBaseStatus = chatInfo.status === 'Online' ? 'Online' : 'Offline';
+                    friendStatusHeader.textContent = friendBaseStatus;
+                    isBlocked = chatInfo.isBlocked;
+                    updateBlockUI(isBlocked);
+                    blockBtn.style.display = 'block';
+                }
+                const avatarUrl = chatInfo.avatarUrl || chatInfo.groupAvatar;
+                if (avatarUrl) {
+                    friendAvatarHeader.src = avatarUrl;
+                } else {
+                    friendAvatarHeader.src = `https://ui-avatars.com/api/?name=${(chatInfo.displayName || chatInfo.groupName).charAt(0)}&background=random&size=64`;
+                }
+                socket.emit('join room', chatId);
+                messages.innerHTML = '<li id="loading-spinner" style="display: block;"><div style="margin: 10px auto; width: 30px; height: 30px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite;"></div></li>';
+                
+                const data = await fetchMessages(Date.now());
+                
+                const spinner = document.getElementById('loading-spinner');
+                if (spinner) spinner.remove();
+                
+                data.messages.forEach(msg => renderMessage(msg, false, false));
+                
+                messages.scrollTop = messages.scrollHeight;
+                
+                socket.emit('mark messages seen', { chatId: chatId });
+
+                isLoading = false;
+                
+                messageQueue.forEach(msg => renderMessage(msg, true, false));
+                updateQueue.forEach(updateMessageTicks);
+                deleteQueue.forEach(renderDeletedMessage);
+                removeQueue.forEach(removeMessage);
+                starQueue.forEach(updateMessageStar); // NAYA
+                
+                messageQueue = [];
+                updateQueue = [];
+                deleteQueue = [];
+                removeQueue = [];
+                starQueue = []; // NAYA
+                
+            } catch (error) {
+                console.error('Error loading chat data:', error);
+                friendNameHeader.textContent = 'Error';
+                friendStatusHeader.textContent = 'Could not load';
+                const spinner = document.getElementById('loading-spinner');
+                if (spinner) spinner.remove();
+            }
+        }
+        
+        async function fetchMessages(cursor) {
+            if (!hasMoreMessages || isLoadingMore) { 
+                if (!hasMoreMessages) {
+                    const spinner = document.getElementById('loading-spinner');
+                    if(spinner) spinner.style.display = 'none';
+                }
+                return { messages: [], nextCursor: null };
+            }
+            isLoadingMore = true;
+            const spinner = document.getElementById('loading-spinner');
+            if(spinner) spinner.style.display = 'block';
+            
+            try {
+                const response = await fetch(`/api/messages/${chatId}?cursor=${cursor}`);
+                const data = await response.json();
+                currentCursor = data.nextCursor;
+                hasMoreMessages = data.nextCursor !== null;
+                
+                if (!hasMoreMessages && spinner) {
+                    spinner.style.display = 'none';
+                }
+                
+                isLoadingMore = false;
+                if(spinner) spinner.style.display = 'none';
+                return data;
+                
+            } catch (error) {
+                console.error('Error loading more messages:', error);
+                isLoadingMore = false;
+                if(spinner) spinner.style.display = 'none';
+                return { messages: [], nextCursor: null };
+            }
+        }
+        function renderMessage(msg, withAnimation, prepend = false) {
+            if ((!msg.text || msg.text.trim() === "") && !msg.isDeleted) { return; }
+            if (msg.tempId && document.querySelector(`li[data-temp-id="${msg.tempId}"]`)) { return; }
+            const item = document.createElement('li');
+            item.setAttribute('data-message-id', msg.messageId);
+            if(msg.tempId) { item.setAttribute('data-temp-id', msg.tempId); }
+            const isSender = (msg.senderEmail === myEmail);
+            let bubbleClass = isSender ? 'bubble-sender' : 'bubble-receiver';
+            
+            // NAYA: Star class
+            if (msg.isStarred) {
+                bubbleClass += ' starred';
+            }
+            
+            const ticks = isSender ? getTicks(msg.status) : '';
+            const time = formatTime(msg.timestamp);
+            const textContent = msg.isDeleted
+                ? `<p class="m-0 deleted-message">${msg.text}</p>`
+                : `<p class="m-0">${msg.text}</p>`;
+            const senderName = (isGroupChat && !isSender) 
+                ? `<div class="sender-name">${msg.senderName}</div>` 
+                : '';
+            
+            let replyHtml = '';
+            if (msg.replyTo && msg.replyTo.text) {
+                replyHtml = `
+                    <div class="bubble-reply">
+                        <div class="bubble-reply-sender">${msg.replyTo.senderName}</div>
+                        <div class="bubble-reply-text">${msg.replyTo.text}</div>
+                    </div>
+                `;
+            }
+
+            if (withAnimation) {
+                item.className = `flex ${isSender ? 'justify-end' : 'justify-start'} new-message`;
+            } else {
+                item.className = `flex ${isSender ? 'justify-end' : 'justify-start'}`;
+            }
+            item.innerHTML = `
+                <div class="flex items-center">
+                    <div class="bubble ${bubbleClass}" data-message-id="${msg.messageId}">
+                        ${senderName}
+                        ${replyHtml}
+                        ${textContent}
+                        <div class="bubble-meta">
+                            <span class="star-icon">⭐</span>
+                            <span>${time}</span>
+                            ${ticks}
+                        </div>
+                    </div>
+                </div>
+            `;
+            if (!msg.isDeleted) {
+                const bubble = item.querySelector('.bubble');
+                bubble.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); 
+                    longPressTimer = setTimeout(() => {
+                        openContextMenu(e, msg.messageId, isSender, bubble, msg.text, msg.senderName);
+                    }, 500);
+                });
+                bubble.addEventListener('touchend', () => { clearTimeout(longPressTimer); });
+                bubble.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    openContextMenu(e, msg.messageId, isSender, bubble, msg.text, msg.senderName);
+                });
+            }
+            if (prepend) {
+                const spinner = document.getElementById('loading-spinner');
+                messages.insertBefore(item, spinner ? spinner.nextSibling : messages.firstChild); 
+            } else {
+                messages.appendChild(item);
+            }
+            if (!prepend && isLoading) {
+                messages.scrollTop = messages.scrollHeight;
+            } 
+            else if (!prepend && !isLoading) {
+                 const isScrolledToBottom = messages.scrollHeight - messages.clientHeight <= messages.scrollTop + 100;
+                 if (isScrolledToBottom) {
+                    messages.scrollTop = messages.scrollHeight;
+                 }
+            }
+        }
+        
+        messages.addEventListener('scroll', async () => {
+            hideContextMenu();
+            if (messages.scrollTop === 0 && hasMoreMessages && !isLoadingMore) {
+                const oldHeight = messages.scrollHeight; 
+                const data = await fetchMessages(currentCursor);
+                data.messages.forEach(msg => renderMessage(msg, false, true));
+                messages.scrollTop = messages.scrollHeight - oldHeight;
+            }
+        });
+
+        function updateBlockUI(blocked) {
+            if (blocked) {
+                isBlocked = true;
+                blockBtn.textContent = 'Unblock User';
+                input.placeholder = 'You have blocked this user';
+                input.disabled = true;
+                sendBtn.disabled = true;
+            } else {
+                isBlocked = false;
+                blockBtn.textContent = 'Block User';
+                input.placeholder = 'Type a message...';
+                input.disabled = false;
+                sendBtn.disabled = false;
+            }
+        }
+        
+        function openContextMenu(event, messageId, isSender, bubble, msgText, msgSenderName) {
+            currentContextMenuMsgId = messageId;
+            currentContextMenuBubble = bubble;
+            bubble.classList.add('highlighted');
+            
+            currentReplyTo = {
+                messageId: messageId,
+                text: msgText,
+                senderName: isSender ? "You" : (msgSenderName || '...'),
+            };
+            
+            // NAYA: Star button ka text set karo
+            const isStarred = bubble.classList.contains('starred');
+            ctxStarBtn.textContent = isStarred ? 'Unstar' : 'Star';
+            
+            ctxDeleteEveryoneBtn.style.display = isSender ? 'block' : 'none';
+            contextMenu.style.display = 'block';
+            contextMenuOverlay.classList.remove('hidden');
+            const clickX = event.touches ? event.touches[0].pageX : event.pageX;
+            const clickY = event.touches ? event.touches[0].pageY : event.pageY;
+            contextMenu.style.left = (clickX - 60) + 'px';
+            contextMenu.style.top = (clickY - 50) + 'px';
+        }
+        
+        function hideContextMenu() {
+            if (currentContextMenuBubble) {
+                currentContextMenuBubble.classList.remove('highlighted');
+            }
+            contextMenu.style.display = 'none';
+            contextMenuOverlay.classList.add('hidden');
+            currentContextMenuMsgId = null;
+            currentContextMenuBubble = null;
+        }
+        
+        contextMenuOverlay.addEventListener('click', hideContextMenu);
+        
+        ctxReplyBtn.addEventListener('click', () => {
+            if (currentReplyTo) {
+                replySenderEl.textContent = `Replying to ${currentReplyTo.senderName}`;
+                replyTextEl.textContent = currentReplyTo.text;
+                replyPreview.classList.remove('hidden');
+                input.focus();
+            }
+            hideContextMenu();
+        });
+        cancelReplyBtn.addEventListener('click', () => {
+            currentReplyTo = null;
+            replyPreview.classList.add('hidden');
+        });
+        
+        ctxDeleteMeBtn.addEventListener('click', () => {
+            if (currentContextMenuMsgId) { socket.emit('delete for me', { messageId: currentContextMenuMsgId }); }
+            hideContextMenu();
+        });
+        ctxDeleteEveryoneBtn.addEventListener('click', () => {
+            if (currentContextMenuMsgId) { socket.emit('delete message', { messageId: currentContextMenuMsgId }); }
+            hideContextMenu();
+        });
+        
+        // NAYA: Star Button Click
+        ctxStarBtn.addEventListener('click', async () => {
+            if (currentContextMenuMsgId) {
+                try {
+                    const response = await fetch('/api/toggle-star', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ messageId: currentContextMenuMsgId })
+                    });
+                    const result = await response.json();
+                    if (response.ok) {
+                        showToast(result.message);
+                        // Real-time update 'message starred' event handle karega
+                    } else {
+                        showToast(`Error: ${result.message}`);
+                    }
+                } catch (error) {
+                    showToast('Server error while starring.');
+                }
+            }
+            hideContextMenu();
+        });
+        
+        document.getElementById('ctx-forward').addEventListener('click', () => { showToast('Forward feature jald aa raha hai'); hideContextMenu(); });
+        document.getElementById('ctx-copy').addEventListener('click', () => { 
+            const textToCopy = currentReplyTo ? currentReplyTo.text : '';
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                showToast('Message copied!');
+            }, () => {
+                showToast('Failed to copy');
+            });
+            hideContextMenu(); 
+        });
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const messageText = input.value.trim();
+            if (messageText && chatId && !isBlocked) {
+                const tempId = Date.now().toString() + myEmail;
+                const messageData = {
+                    messageId: tempId,
+                    tempId: tempId,
+                    senderEmail: myEmail,
+                    senderName: myEmail.split('@')[0], 
+                    text: messageText,
+                    timestamp: Date.now(),
+                    status: 'sending',
+                    replyTo: currentReplyTo
+                };
+                renderMessage(messageData, true, false);
+                socket.emit('send message', { 
+                    receiverId: chatId, 
+                    text: messageText,
+                    tempId: tempId,
+                    replyTo: currentReplyTo
+                });
+                socket.emit('stop typing', { chatId: chatId });
+                input.value = '';
+                currentReplyTo = null;
+                replyPreview.classList.add('hidden');
+            }
+        });
+        
+        menuBtn.addEventListener('click', () => {
+            menuDropdown.style.display = (menuDropdown.style.display === 'block') ? 'none' : 'block';
+        });
+        window.addEventListener('click', (e) => {
+            if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target)) {
+                menuDropdown.style.display = 'none';
+            }
+            if (contextMenu.style.display === 'block' && !e.target.closest('.bubble')) {
+                 hideContextMenu();
+            }
+        });
+        blockBtn.addEventListener('click', async (e) => { e.preventDefault(); const action = isBlocked ? 'unblock' : 'block'; try { const response = await fetch('/api/toggle-block', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ friendEmail: chatId }) }); const result = await response.json(); if (response.ok) { await loadChatData(); showToast(result.message); } else { showToast(`Error: ${result.message}`); } } catch (error) { showToast('Server error while blocking user.'); } menuDropdown.style.display = 'none'; });
+        
+        socket.on('send error', (data) => { showToast(data.message); });
+        socket.on('friend status', (data) => { if (!isGroupChat && data.email === chatId) { friendBaseStatus = data.status === 'Online' ? 'Online' : 'Offline'; friendStatusHeader.textContent = friendBaseStatus; } });
+        socket.on('new message', (messageData) => {
+            if (isLoading) {
+                messageQueue.push(messageData);
+                return;
+            }
+            if (messageData.senderEmail === myEmail && messageData.tempId) {
+                const tempLi = document.querySelector(`li[data-temp-id="${messageData.tempId}"]`);
+                if (tempLi) {
+                    tempLi.setAttribute('data-message-id', messageData.messageId);
+                    const tempBubble = tempLi.querySelector('.bubble');
+                    tempBubble.setAttribute('data-message-id', messageData.messageId);
+                    if (!messageData.isDeleted) {
+                        tempBubble.addEventListener('click', (e) => {
+                            openContextMenu(e, messageData.messageId, true, tempBubble, messageData.text, messageData.senderName);
+                        });
+                    }
+                    const meta = tempBubble.querySelector('.bubble-meta');
+                    const time = meta.querySelector('span:first-child');
+                    meta.innerHTML = `<span class="star-icon">⭐</span>${time.outerHTML} ${getTicks(messageData.status)}`;
+                }
+            } 
+            else if (messageData.senderEmail !== myEmail) {
+                renderMessage(messageData, true, false);
+                socket.emit('mark messages seen', { chatId: chatId });
+            }
+        });
+
+        function updateMessageTicks(msgUpdate) {
+            const bubble = document.querySelector(`div[data-message-id="${msgUpdate.messageId}"]`);
+            if (bubble) {
+                const meta = bubble.querySelector('.bubble-meta');
+                const star = meta.querySelector('.star-icon');
+                const time = meta.querySelector('span:nth-child(2)');
+                meta.innerHTML = `${star.outerHTML} ${time.outerHTML} ${getTicks(msgUpdate.status)}`;
+            }
+        }
+        socket.on('messages updated', (updatedMessages) => {
+            if (isLoading) {
+                updateQueue.push(...updatedMessages);
+            } else {
+                updatedMessages.forEach(updateMessageTicks);
+            }
+        });
+
+        function renderDeletedMessage(data) {
+            const { messageId, text } = data;
+            const bubble = document.querySelector(`div[data-message-id="${messageId}"]`);
+            if (bubble) {
+                const textEl = bubble.querySelector('p');
+                textEl.textContent = text || 'This message was deleted';
+                textEl.className = 'm-0 deleted-message';
+                const newBubble = bubble.cloneNode(true);
+                bubble.parentNode.replaceChild(newBubble, bubble);
+            }
+        }
+        socket.on('message deleted', (data) => {
+            if (isLoading) {
+                deleteQueue.push(data);
+            } else {
+                renderDeletedMessage(data);
+            }
+        });
+
+        function removeMessage(data) {
+            const { messageId } = data;
+            const bubbleParent = document.querySelector(`li[data-message-id="${messageId}"]`);
+            if (bubbleParent) {
+                bubbleParent.remove();
+            }
+        }
+        socket.on('message removed', (data) => {
+            if (isLoading) {
+                removeQueue.push(data);
+            } else {
+                removeMessage(data);
+            }
+        });
+        
+        // NAYA: Star update listener
+        function updateMessageStar(data) {
+             const bubble = document.querySelector(`div[data-message-id="${data.messageId}"]`);
+             if (bubble) {
+                if (data.isStarred) {
+                    bubble.classList.add('starred');
+                } else {
+                    bubble.classList.remove('starred');
+                }
+             }
+        }
+        socket.on('message starred', (data) => {
+            if (isLoading) {
+                starQueue.push(data);
+            } else {
+                updateMessageStar(data);
+            }
+        });
+
+        input.addEventListener('input', () => { 
+            clearTimeout(typingTimer); 
+            socket.emit('start typing', { chatId: chatId }); 
+            typingTimer = setTimeout(() => { 
+                socket.emit('stop typing', { chatId: chatId }); 
+            }, 1000); 
+        });
+        socket.on('friend typing', (data) => { if (data.chatId === chatId) { friendStatusHeader.textContent = 'typing... ✍️'; } });
+        socket.on('friend stopped typing', (data) => { if (data.chatId === chatId) { friendStatusHeader.textContent = friendBaseStatus; } });
+
+        loadChatData();
+    </script>
+</body>
+</html>

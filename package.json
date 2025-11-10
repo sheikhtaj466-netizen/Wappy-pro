@@ -1,0 +1,32 @@
+{
+  "name": "wappy",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "css": "unocss \"public/**/*.html\" -o \"public/style.css\" --watch",
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "lowdb": "^7.0.1",
+    "multer": "^2.0.2",
+    "nanoid": "^5.1.6",
+    "nodemailer": "^7.0.10",
+    "socket.io": "^4.8.1",
+    "zxcvbn": "^4.4.2"
+  },
+  "devDependencies": {
+    "@unocss/cli": "^66.5.4",
+    "unocss": "^66.5.4"
+  }
+}

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Group 🍉 Wappy</title>
+    
+    <script>
+        (function() {
+            if (localStorage.getItem('theme') === 'dark' || 
+                (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
+    </script>
+    
+    <link rel="stylesheet" href="style.css">
+    
+    <style>
+        .dark body { background-color: #121212; }
+        
+        /* Contact item */
+        .contact-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 16px;
+            cursor: pointer;
+        }
+        .contact-item:hover {
+            background-color: #f0f2f5;
+        }
+        .dark .contact-item:hover {
+            background-color: #2a3942;
+        }
+        
+        /* Selected contact */
+        .contact-item.selected {
+            background-color: #dcfce7; /* Light Green */
+        }
+        .dark .contact-item.selected {
+            background-color: #005C4B; /* Dark Green */
+        }
+        
+        /* Checkbox */
+        .contact-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-left: auto; /* Checkbox ko right side mein rakho */
+        }
+
+        #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 4px; padding: 16px; position: fixed; z-index: 100; left: 50%; transform: translateX(-50%); bottom: 30px; transition: visibility 0s, opacity 0.5s linear; opacity: 0; }
+        #toast.show { visibility: visible; opacity: 1; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900">
+
+    <header class="bg-green-600 dark:bg-gray-800 text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-10">
+        <div class="flex items-center">
+            <a href="/chats.html" class="mr-3 text-2xl">←</a>
+            <h1 class="text-2xl font-bold">New Group</h1>
+        </div>
+        <button id="create-group-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">
+            Create
+        </button>
+    </header>
+
+    <div class="container mx-auto p-4 max-w-lg">
+        
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md mb-4">
+            <label for="group-name" class="block text-gray-700 dark:text-gray-300 mb-2">Group Name</label>
+            <input type="text" id="group-name" placeholder="Enter group name..." class="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" required>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+            <h2 class="text-xl font-bold text-gray-800 dark:text-white p-4 border-b dark:border-gray-700">
+                Select Members
+            </h2>
+            <div id="contacts-list">
+                <p id="loading-text" class="text-gray-500 dark:text-gray-400 p-6">Loading your contacts...</p>
+                </div>
+        </div>
+    </div>
+    
+    <div id="toast"></div>
+    <script>
+        const contactsListDiv = document.getElementById('contacts-list');
+        const loadingText = document.getElementById('loading-text');
+        const groupNameInput = document.getElementById('group-name');
+        const createGroupBtn = document.getElementById('create-group-btn');
+        const toast = document.getElementById('toast');
+        
+        // NAYA: Selected members ka array
+        let selectedMembers = [];
+
+        function showToast(message) {
+            toast.textContent = message;
+            toast.className = "show";
+            setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
+        }
+
+        // === Contacts Load Karna ===
+        window.addEventListener('DOMContentLoaded', async () => {
+            loadingText.style.display = 'block';
+            try {
+                const response = await fetch('/api/contacts'); // Sirf contacts load karo
+                const contacts = await response.json();
+                
+                loadingText.style.display = 'none'; 
+                contactsListDiv.innerHTML = ''; 
+
+                if (contacts.length === 0) {
+                    contactsListDiv.innerHTML = '<p class="text-gray-500 dark:text-gray-400 p-6">You have no contacts to add to a group.</p>';
+                    return;
+                }
+                
+                contacts.forEach(renderContact);
+
+            } catch (error) {
+                console.error('Error loading contacts:', error);
+                loadingText.style.display = 'none';
+                contactsListDiv.innerHTML = '<p class="text-red-500 dark:text-red-400 p-6">Could not load contacts.</p>';
+            }
+        });
+        
+        // === Contact ko List mein Dikhana ===
+        function renderContact(contact) {
+            const contactEl = document.createElement('div');
+            contactEl.className = 'contact-item dark:border-gray-700 border-b';
+            contactEl.setAttribute('data-email', contact.friendEmail);
+            
+            const avatarSrc = contact.avatarUrl 
+                ? contact.avatarUrl 
+                : `https://ui-avatars.com/api/?name=${contact.nickname.charAt(0)}&background=random&size=64`;
+
+            contactEl.innerHTML = `
+                <img src="${avatarSrc}" alt="Avatar" class="w-10 h-10 rounded-full object-cover mr-4">
+                <span class="text-lg text-gray-800 dark:text-white font-medium">${contact.nickname}</span>
+                <input type="checkbox" class="contact-checkbox">
+            `;
+            
+            // NAYA: Click par select/unselect karna
+            contactEl.addEventListener('click', (e) => {
+                // Agar checkbox par click hua hai toh usko handle karne do
+                if (e.target.type === 'checkbox') {
+                     toggleMember(contact.friendEmail, e.target.checked, contactEl);
+                     return;
+                }
+                
+                // Agar row par kahin aur click hua hai
+                const checkbox = contactEl.querySelector('.contact-checkbox');
+                checkbox.checked = !checkbox.checked; // Checkbox ko toggle karo
+                toggleMember(contact.friendEmail, checkbox.checked, contactEl);
+            });
+            
+            contactsListDiv.appendChild(contactEl);
+        }
+        
+        // === Member ko Select/Unselect Karna ===
+        function toggleMember(email, isSelected, element) {
+            if (isSelected) {
+                // Add karo
+                if (!selectedMembers.includes(email)) {
+                    selectedMembers.push(email);
+                }
+                element.classList.add('selected');
+            } else {
+                // Remove karo
+                selectedMembers = selectedMembers.filter(m => m !== email);
+                element.classList.remove('selected');
+            }
+        }
+        
+        // === Group Create Button ===
+        createGroupBtn.addEventListener('click', async () => {
+            const groupName = groupNameInput.value.trim();
+            
+            if (!groupName) {
+                showToast("Please enter a group name.");
+                return;
+            }
+            if (selectedMembers.length === 0) {
+                showToast("Please select at least one member.");
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/create-group', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        groupName: groupName,
+                        members: selectedMembers 
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showToast("Group created successfully!");
+                    // Naya group banne ke baad Chats page par bhej do
+                    setTimeout(() => {
+                        window.location.href = `/chat.html?id=${result.group.groupId}`;
+                    }, 1000);
+                } else {
+                    showToast(`Error: ${result.message}`);
+                }
+            } catch (error) {
+                showToast('Server error while creating group.');
+            }
+        });
+
+    </script>
+</body>
+</html>
