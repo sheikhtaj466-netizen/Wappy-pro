@@ -1,10 +1,9 @@
-// index.js (Kadam 35.4 - Star FIX - Part 1)
+// index.js (Kadam 35 - MongoDB FINAL - Part 1)
 import express from 'express';
 import http from 'http';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
-import db from './db.js';
 import { Server } from 'socket.io';
 import { nanoid } from 'nanoid';
 import dotenv from 'dotenv';
@@ -13,6 +12,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
+import mongoose from 'mongoose'; // MongoDB
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,45 +51,73 @@ const loginLimiter = rateLimit({
     legacyHeaders: false, 
 });
 
-async function initializeDatabase() {
-  await db.read();
-  let needsUpdate = false;
-  if (!db.data.users) { db.data.users = []; needsUpdate = true; }
-  if (!db.data.contacts) { db.data.contacts = []; needsUpdate = true; }
-  if (!db.data.messages) { db.data.messages = []; needsUpdate = true; }
-  if (!db.data.groups) { db.data.groups = []; needsUpdate = true; }
+// === NAYA: MongoDB Database Connection ===
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('MongoDB connected successfully!'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
-  db.data.users.forEach(user => {
-    if (user.status === undefined) { user.status = 'Offline'; needsUpdate = true; }
-    if (user.lastSeen === undefined) { user.lastSeen = 0; needsUpdate = true; }
-    if (user.avatarUrl === undefined) { user.avatarUrl = ''; needsUpdate = true; }
-    if (user.privacy === undefined) {
-      user.privacy = { lastSeen: "everyone", avatar: "everyone" };
-      needsUpdate = true;
-    }
-  });
-  db.data.messages.forEach(msg => {
-    if (msg.isDeleted === undefined) { msg.isDeleted = false; needsUpdate = true; }
-    if (msg.deletedBy === undefined) { msg.deletedBy = []; needsUpdate = true; }
-    if (msg.receiverGroupId === undefined) { msg.receiverGroupId = null; needsUpdate = true; }
-    if (msg.senderName === undefined) { msg.senderName = ''; needsUpdate = true; }
-    if (msg.replyTo === undefined) { msg.replyTo = null; needsUpdate = true; }
-    if (msg.isStarred === undefined) { msg.isStarred = false; needsUpdate = true; }
-  });
-  db.data.contacts.forEach(contact => {
-    if (contact.isBlocked === undefined) { contact.isBlocked = false; needsUpdate = true; }
-    if (contact.isPinned === undefined) {
-      contact.isPinned = false;
-      needsUpdate = true;
-    }
-  });
-  if (needsUpdate) {
-    console.log('Database structure ko fix kiya ja raha (Kadam 35)...');
-    await db.write();
-    console.log('Database fix ho gaya!');
-  }
-}
+// === NAYA: Mongoose Models (Schemas) ===
 
+const userSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true, index: true },
+    password: { type: String, required: true },
+    displayName: { type: String, default: "" },
+    avatarUrl: { type: String, default: "" },
+    status: { type: String, default: "Offline" },
+    lastSeen: { type: Number, default: 0 },
+    privacy: {
+        lastSeen: { type: String, default: "everyone" },
+        avatar: { type: String, default: "everyone" }
+    }
+});
+const User = mongoose.model('User', userSchema);
+
+const contactSchema = new mongoose.Schema({
+    ownerEmail: { type: String, required: true, index: true },
+    friendEmail: { type: String, required: true, index: true },
+    nickname: { type: String, required: true },
+    isBlocked: { type: Boolean, default: false },
+    isPinned: { type: Boolean, default: false }
+});
+const Contact = mongoose.model('Contact', contactSchema);
+
+const groupMemberSchema = new mongoose.Schema({
+    email: String,
+    role: { type: String, enum: ['admin', 'member'], default: 'member' }
+}, { _id: false });
+const groupSchema = new mongoose.Schema({
+    groupId: { type: String, required: true, unique: true, default: nanoid },
+    groupName: String,
+    groupAvatar: { type: String, default: "" },
+    creatorEmail: String,
+    members: [groupMemberSchema]
+});
+const Group = mongoose.model('Group', groupSchema);
+
+const replySchema = new mongoose.Schema({
+    messageId: String,
+    text: String,
+    senderName: String
+}, { _id: false });
+
+const messageSchema = new mongoose.Schema({
+    messageId: { type: String, required: true, unique: true, default: nanoid },
+    senderEmail: { type: String, required: true, index: true },
+    senderName: { type: String, required: true },
+    receiverEmail: { type: String, index: true },
+    receiverGroupId: { type: String, index: true },
+    text: String,
+    timestamp: { type: Number, index: true },
+    status: String,
+    isDeleted: { type: Boolean, default: false },
+    deletedBy: [String],
+    replyTo: { type: replySchema, default: null },
+    isStarred: { type: Boolean, default: false } // Kadam 35
+});
+const Message = mongoose.model('Message', messageSchema);
+
+
+// (Middleware & ProtectRoute)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -100,7 +128,7 @@ const protectRoute = (req, res, next) => {
   if (!token) { return res.redirect('/login.html'); }
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
+    req.user = decoded; // { email: "..." }
     next();
   } catch (error) {
     return res.redirect('/login.html');
@@ -111,8 +139,7 @@ io.use(async (socket, next) => {
     const token = socket.handshake.headers.cookie?.split('; ').find(row => row.startsWith('token='))?.split('=')[1];
     if (!token) { return next(new Error('Authentication error')); }
     const decoded = jwt.verify(token, JWT_SECRET);
-    await db.read();
-    const user = db.data.users.find(u => u.email === decoded.email);
+    const user = await User.findOne({ email: decoded.email }).lean(); // .lean() faster read-only
     if (!user) { return next(new Error('User not found')); }
     socket.user = user;
     next();
@@ -121,20 +148,19 @@ io.use(async (socket, next) => {
   }
 });
 
-// === NAYA FIX: getRoomName ko yahan (global) define kiya ===
 const getRoomName = (email1, email2) => [email1, email2].sort().join('-');
+
+// === HTTP Routes (Updated for MongoDB) ===
 
 app.get('/', protectRoute, (req, res) => { res.redirect('/chats.html'); });
 app.get('/home.html', protectRoute, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find(u => u.email === req.user.email);
-  if (!user.displayName || user.displayName === "") { return res.redirect('/set-name.html'); }
+  const user = await User.findOne({ email: req.user.email }).lean();
+  if (!user || !user.displayName || user.displayName === "") { return res.redirect('/set-name.html'); }
   res.sendFile(path.join(__dirname, 'public', 'home.html'));
 });
 app.get('/chats.html', protectRoute, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find(u => u.email === req.user.email);
-  if (!user.displayName || user.displayName === "") { return res.redirect('/set-name.html'); }
+  const user = await User.findOne({ email: req.user.email }).lean();
+  if (!user || !user.displayName || user.displayName === "") { return res.redirect('/set-name.html'); }
   res.sendFile(path.join(__dirname, 'public', 'chats.html'));
 });
 app.get('/chat.html', protectRoute, (req, res) => {
@@ -148,14 +174,12 @@ app.get('/create-group.html', protectRoute, (req, res) => {
 });
 
 app.get('/api/me', protectRoute, async (req, res) => {
-  await db.read();
-  const user = db.data.users.find(u => u.email === req.user.email);
-  res.json({ email: user.email, displayName: user.displayName, avatarUrl: user.avatarUrl, privacy: user.privacy });
+  const user = await User.findOne({ email: req.user.email }).select('-password').lean();
+  res.json(user);
 });
-function canSeeInfo(requesterEmail, targetUser) {
-    const isContact = db.data.contacts.some(
-        c => c.ownerEmail === targetUser.email && c.friendEmail === requesterEmail
-    );
+
+async function canSeeInfo(requesterEmail, targetUser) {
+    const isContact = await Contact.findOne({ ownerEmail: targetUser.email, friendEmail: requesterEmail });
     let canSeeAvatar = false;
     if (targetUser.privacy.avatar === 'everyone') {
         canSeeAvatar = true;
@@ -170,25 +194,32 @@ function canSeeInfo(requesterEmail, targetUser) {
     }
     return { canSeeAvatar, canSeeLastSeen };
 }
+
 app.get('/api/userinfo/:email', protectRoute, async (req, res) => {
   try {
-    await db.read();
     const friendEmail = req.params.email;
     const ownerEmail = req.user.email;
-    const contact = db.data.contacts.find(c => c.ownerEmail === ownerEmail && c.friendEmail === friendEmail);
-    const friendUser = db.data.users.find(u => u.email === friendEmail);
+    const contact = await Contact.findOne({ ownerEmail: ownerEmail, friendEmail: friendEmail }).lean();
+    const friendUser = await User.findOne({ email: friendEmail }).lean();
+    
     if (contact && friendUser) {
-      const { canSeeAvatar, canSeeLastSeen } = canSeeInfo(ownerEmail, friendUser);
-      res.json({ email: contact.friendEmail, displayName: contact.nickname, status: canSeeLastSeen ? friendUser.status : 'Offline', lastSeen: canSeeLastSeen ? friendUser.lastSeen : 0, avatarUrl: canSeeAvatar ? friendUser.avatarUrl : '', isBlocked: contact.isBlocked });
+      const { canSeeAvatar, canSeeLastSeen } = await canSeeInfo(ownerEmail, friendUser);
+      res.json({ 
+        email: contact.friendEmail, 
+        displayName: contact.nickname,
+        status: canSeeLastSeen ? friendUser.status : 'Offline',
+        lastSeen: canSeeLastSeen ? friendUser.lastSeen : 0,
+        avatarUrl: canSeeAvatar ? friendUser.avatarUrl : '',
+        isBlocked: contact.isBlocked
+      });
     } else { res.status(404).json({ message: 'Contact not found' }); }
   } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
 
 app.get('/api/groupinfo/:groupId', protectRoute, async (req, res) => {
     try {
-        await db.read();
         const groupId = req.params.groupId;
-        const group = db.data.groups.find(g => g.groupId === groupId);
+        const group = await Group.findOne({ groupId: groupId }).lean();
         
         if (!group) {
             return res.status(404).json({ message: "Group not found" });
@@ -199,14 +230,15 @@ app.get('/api/groupinfo/:groupId', protectRoute, async (req, res) => {
             return res.status(403).json({ message: "You are not a member of this group" });
         }
         
-        const detailedMembers = group.members.map(member => {
-            const user = db.data.users.find(u => u.email === member.email);
+        // Member details ko populate karo
+        const detailedMembers = await Promise.all(group.members.map(async (member) => {
+            const user = await User.findOne({ email: member.email }).select('displayName').lean();
             return {
                 email: member.email,
                 role: member.role,
                 displayName: (user && user.displayName) ? user.displayName : member.email.split('@')[0]
             };
-        });
+        }));
         
         res.json({ ...group, members: detailedMembers });
         
@@ -219,76 +251,89 @@ app.get('/api/messages/:id', protectRoute, async (req, res) => {
   const myEmail = req.user.email;
   const id = req.params.id;
   const cursor = req.query.cursor ? parseInt(req.query.cursor) : Date.now();
-  await db.read();
   
-  const allMessages = db.data.messages.filter(msg => {
-    if (msg.deletedBy.includes(myEmail)) { return false; }
-    const isGroupChat = msg.receiverGroupId === id;
-    const isPrivateChat = (msg.senderEmail === myEmail && msg.receiverEmail === id) ||
-                         (msg.senderEmail === id && msg.receiverEmail === myEmail);
-    return isGroupChat || isPrivateChat;
-  });
+  const query = {
+      $and: [
+          { timestamp: { $lt: cursor } },
+          { deletedBy: { $nin: [myEmail] } },
+          { $or: [
+              // 1-to-1 chats
+              { senderEmail: myEmail, receiverEmail: id },
+              { senderEmail: id, receiverEmail: myEmail },
+              // Group chats
+              { receiverGroupId: id }
+          ]}
+      ]
+  };
 
-  allMessages.sort((a, b) => b.timestamp - a.timestamp);
-  const startIndex = allMessages.findIndex(msg => msg.timestamp < cursor);
-  if (startIndex === -1 && cursor !== Date.now()) {
-    return res.json({ messages: [], nextCursor: null });
+  try {
+      const messages = await Message.find(query)
+          .sort({ timestamp: -1 }) // Naye se puraana
+          .limit(MESSAGES_PER_PAGE)
+          .lean();
+      
+      const nextCursor = messages.length === MESSAGES_PER_PAGE ? messages[messages.length - 1].timestamp : null;
+      
+      res.json({ messages: messages.reverse(), nextCursor: nextCursor }); // Waapas puraane se naya bhejo
+  } catch (error) {
+      console.error("Error fetching messages:", error);
+      res.status(500).json({ message: "Server error" });
   }
-  const start = (startIndex === -1) ? 0 : startIndex;
-  const end = start + MESSAGES_PER_PAGE;
-  
-  const messages = allMessages.slice(start, end).map(msg => {
-      let senderName = msg.senderName;
-      if (!senderName) {
-          const sender = db.data.users.find(u => u.email === msg.senderEmail);
-          senderName = (sender && sender.displayName) ? sender.displayName : msg.senderEmail.split('@')[0];
-      }
-      return { ...msg, senderName: senderName };
-  });
-  
-  const nextCursor = messages.length === MESSAGES_PER_PAGE ? messages[messages.length - 1].timestamp : null;
-  messages.reverse();
-  res.json({ messages, nextCursor });
 });
 
 app.get('/api/contacts', protectRoute, async (req, res) => {
   try {
     const ownerEmail = req.user.email;
     const searchQuery = req.query.q || '';
-    await db.read();
-    let myContacts = db.data.contacts.filter(c => c.ownerEmail === ownerEmail);
+    
+    let query = { ownerEmail: ownerEmail };
     if (searchQuery) {
-        myContacts = myContacts.filter(c => 
-            c.nickname.toLowerCase().includes(searchQuery.toLowerCase())
-        );
+        query.nickname = { $regex: searchQuery, $options: 'i' }; // 'i' = case-insensitive
     }
-    const detailedContacts = myContacts.map(contact => {
-      const friendUser = db.data.users.find(u => u.email === contact.friendEmail);
+    
+    const myContacts = await Contact.find(query).lean();
+    
+    const detailedContacts = await Promise.all(myContacts.map(async (contact) => {
+      const friendUser = await User.findOne({ email: contact.friendEmail }).lean();
       if (!friendUser) return null;
-      const { canSeeAvatar, canSeeLastSeen } = canSeeInfo(ownerEmail, friendUser);
-      return { ...contact, status: canSeeLastSeen ? friendUser.status : 'Offline', lastSeen: canSeeLastSeen ? friendUser.lastSeen : 0, avatarUrl: canSeeAvatar ? friendUser.avatarUrl : '' };
-    }).filter(Boolean);
-    detailedContacts.sort((a, b) => {
+      const { canSeeAvatar, canSeeLastSeen } = await canSeeInfo(ownerEmail, friendUser);
+      return { 
+        ...contact, 
+        status: canSeeLastSeen ? friendUser.status : 'Offline', 
+        lastSeen: canSeeLastSeen ? friendUser.lastSeen : 0,
+        avatarUrl: canSeeAvatar ? friendUser.avatarUrl : '' 
+      };
+    }));
+    
+    const finalContacts = detailedContacts.filter(Boolean);
+
+    finalContacts.sort((a, b) => {
       if (a.isPinned && !b.isPinned) return -1;
       if (!a.isPinned && b.isPinned) return 1;
       return a.nickname.localeCompare(b.nickname);
     });
-    res.json(detailedContacts);
+    
+    res.json(finalContacts);
   } catch (error) { console.error('Get contacts error:', error); res.status(500).json({ message: 'Server error' }); }
 });
-// index.js (Kadam 35.4 - Star FIX - Part 2)
+
 app.get('/api/chats', protectRoute, async (req, res) => {
     try {
         const myEmail = req.user.email;
         const searchQuery = req.query.q || '';
-        await db.read();
-
-        const allMessages = db.data.messages.filter(msg => 
-            (msg.senderEmail === myEmail || msg.receiverEmail === myEmail || 
-             (msg.receiverGroupId && db.data.groups.find(g => g.groupId === msg.receiverGroupId)?.members.some(m => m.email === myEmail))) &&
-            !msg.deletedBy.includes(myEmail)
-        );
         
+        // 1. Find all messages involving the user
+        const allMessages = await Message.find({
+            $and: [
+                { deletedBy: { $nin: [myEmail] } },
+                { $or: [
+                    { senderEmail: myEmail },
+                    { receiverEmail: myEmail },
+                    { receiverGroupId: { $in: (await Group.find({ 'members.email': myEmail }).select('groupId').lean()).map(g => g.groupId) } }
+                ]}
+            ]
+        }).sort({ timestamp: -1 }).lean(); // Sort by new to old to easily find the last one
+
         const conversations = new Map();
         allMessages.forEach(msg => {
             let convoId = '';
@@ -301,7 +346,7 @@ app.get('/api/chats', protectRoute, async (req, res) => {
                 convoId = msg.senderEmail === myEmail ? msg.receiverEmail : msg.senderEmail;
             }
             
-            if (!conversations.has(convoId) || msg.timestamp > conversations.get(convoId).timestamp) {
+            if (!conversations.has(convoId)) { // Since they are sorted, the first one we find is the last message
                 conversations.set(convoId, {
                     id: convoId,
                     isGroup: isGroup,
@@ -315,9 +360,9 @@ app.get('/api/chats', protectRoute, async (req, res) => {
 
         const chatList = Array.from(conversations.values());
         
-        let detailedChatList = chatList.map(chat => {
+        let detailedChatList = await Promise.all(chatList.map(async (chat) => {
             if (chat.isGroup) {
-                const group = db.data.groups.find(g => g.groupId === chat.id);
+                const group = await Group.findOne({ groupId: chat.id }).lean();
                 if (!group) return null;
                 return {
                     ...chat,
@@ -326,10 +371,10 @@ app.get('/api/chats', protectRoute, async (req, res) => {
                     isPinned: false // (Group pinning abhi nahi)
                 };
             } else {
-                const contact = db.data.contacts.find(c => c.ownerEmail === myEmail && c.friendEmail === chat.id);
-                const friendUser = db.data.users.find(u => u.email === chat.id);
+                const contact = await Contact.findOne({ ownerEmail: myEmail, friendEmail: chat.id }).lean();
+                const friendUser = await User.findOne({ email: chat.id }).lean();
                 if (!contact || !friendUser) return null;
-                const { canSeeAvatar } = canSeeInfo(myEmail, friendUser);
+                const { canSeeAvatar } = await canSeeInfo(myEmail, friendUser);
                 return {
                     ...chat,
                     nickname: contact.nickname,
@@ -337,7 +382,98 @@ app.get('/api/chats', protectRoute, async (req, res) => {
                     isPinned: contact.isPinned
                 };
             }
-        }).filter(Boolean);
+        }));
+        
+        detailedChatList = detailedChatList.filter(Boolean);
+
+        if (searchQuery) {
+            detailedChatList = detailedChatList.filter(c => 
+                c.nickname.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+        }
+
+        detailedChatList.sort((a, b) => {
+            if (a.isPinned && !b.isPinned) return -1;
+            if (!a.isPinned && b.isPinned) return 1;
+            return b.timestamp - a.timestamp;
+        });
+
+        res.json(detailedChatList);
+
+    } catch (error) {
+        console.error('Get chats error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+// index.js (Kadam C.3 - MongoDB Update - Part 2)
+app.get('/api/chats', protectRoute, async (req, res) => {
+    try {
+        const myEmail = req.user.email;
+        const searchQuery = req.query.q || '';
+        
+        // 1. Find all messages involving the user
+        const allMessages = await Message.find({
+            $and: [
+                { deletedBy: { $nin: [myEmail] } },
+                { $or: [
+                    { senderEmail: myEmail },
+                    { receiverEmail: myEmail },
+                    { receiverGroupId: { $in: (await Group.find({ 'members.email': myEmail }).select('groupId').lean()).map(g => g.groupId) } }
+                ]}
+            ]
+        }).sort({ timestamp: -1 }).lean(); // Sort by new to old to easily find the last one
+
+        const conversations = new Map();
+        allMessages.forEach(msg => {
+            let convoId = '';
+            let isGroup = false;
+
+            if (msg.receiverGroupId) {
+                convoId = msg.receiverGroupId;
+                isGroup = true;
+            } else {
+                convoId = msg.senderEmail === myEmail ? msg.receiverEmail : msg.senderEmail;
+            }
+            
+            if (!conversations.has(convoId)) { // Since they are sorted, the first one we find is the last message
+                conversations.set(convoId, {
+                    id: convoId,
+                    isGroup: isGroup,
+                    text: msg.isDeleted ? "This message was deleted" : msg.text,
+                    timestamp: msg.timestamp,
+                    senderEmail: msg.senderEmail,
+                    status: msg.status
+                });
+            }
+        });
+
+        const chatList = Array.from(conversations.values());
+        
+        let detailedChatList = await Promise.all(chatList.map(async (chat) => {
+            if (chat.isGroup) {
+                const group = await Group.findOne({ groupId: chat.id }).lean();
+                if (!group) return null;
+                return {
+                    ...chat,
+                    nickname: group.groupName,
+                    avatarUrl: group.groupAvatar || '',
+                    isPinned: false // (Group pinning abhi nahi)
+                };
+            } else {
+                const contact = await Contact.findOne({ ownerEmail: myEmail, friendEmail: chat.id }).lean();
+                const friendUser = await User.findOne({ email: chat.id }).lean();
+                if (!contact || !friendUser) return null;
+                const { canSeeAvatar } = await canSeeInfo(myEmail, friendUser);
+                return {
+                    ...chat,
+                    nickname: contact.nickname,
+                    avatarUrl: canSeeAvatar ? friendUser.avatarUrl : '',
+                    isPinned: contact.isPinned
+                };
+            }
+        }));
+        
+        detailedChatList = detailedChatList.filter(Boolean);
 
         if (searchQuery) {
             detailedChatList = detailedChatList.filter(c => 
@@ -362,25 +498,22 @@ app.post('/api/upload-avatar', protectRoute, upload.single('avatar'), async (req
   try {
     if (!req.file) { return res.status(400).send('No file uploaded.'); }
     const avatarUrl = `/uploads/avatars/${req.file.filename}`;
-    await db.read();
-    const user = db.data.users.find(u => u.email === req.user.email);
-    if (user) {
-      user.avatarUrl = avatarUrl;
-      await db.write();
-      console.log(`Avatar updated for ${req.user.email}: ${avatarUrl}`);
-      res.redirect('/profile.html');
-    } else { res.status(404).send('User not found'); }
+    
+    await User.updateOne({ email: req.user.email }, { $set: { avatarUrl: avatarUrl } });
+    
+    console.log(`Avatar updated for ${req.user.email}: ${avatarUrl}`);
+    res.redirect('/profile.html');
   } catch (error) { console.error('Avatar upload error:', error); res.status(500).send('Server error'); }
 });
 app.post('/api/toggle-block', protectRoute, async (req, res) => {
   try {
     const { friendEmail } = req.body;
     const ownerEmail = req.user.email;
-    await db.read();
-    const contact = db.data.contacts.find(c => c.ownerEmail === ownerEmail && c.friendEmail === friendEmail);
+    
+    const contact = await Contact.findOne({ ownerEmail: ownerEmail, friendEmail: friendEmail });
     if (contact) {
       contact.isBlocked = !contact.isBlocked; 
-      await db.write();
+      await contact.save();
       const status = contact.isBlocked ? 'blocked' : 'unblocked';
       console.log(`User ${ownerEmail} ${status} ${friendEmail}`);
       res.json({ message: `User ${status}`, isBlocked: contact.isBlocked });
@@ -396,13 +529,10 @@ app.post('/api/toggle-pin', protectRoute, async (req, res) => {
   try {
     const { friendEmail } = req.body;
     const ownerEmail = req.user.email;
-    await db.read();
-    const contact = db.data.contacts.find(
-      c => c.ownerEmail === ownerEmail && c.friendEmail === friendEmail
-    );
+    const contact = await Contact.findOne({ ownerEmail: ownerEmail, friendEmail: friendEmail });
     if (contact) {
       contact.isPinned = !contact.isPinned; 
-      await db.write();
+      await contact.save();
       const status = contact.isPinned ? 'pinned' : 'unpinned';
       console.log(`User ${ownerEmail} ${status} chat with ${friendEmail}`);
       res.json({ message: `Chat ${status}`, isPinned: contact.isPinned });
@@ -422,17 +552,14 @@ app.post('/api/update-privacy', protectRoute, async (req, res) => {
         if (!validOptions.includes(lastSeen) || !validOptions.includes(avatar)) {
             return res.status(400).json({ message: "Invalid options" });
         }
-        await db.read();
-        const user = db.data.users.find(u => u.email === myEmail);
-        if (user) {
-            user.privacy.lastSeen = lastSeen;
-            user.privacy.avatar = avatar;
-            await db.write();
-            console.log(`Privacy updated for ${myEmail}`);
-            res.json({ message: "Privacy settings updated" });
-        } else {
-            res.status(404).json({ message: "User not found" });
-        }
+        
+        await User.updateOne(
+            { email: myEmail }, 
+            { $set: { 'privacy.lastSeen': lastSeen, 'privacy.avatar': avatar } }
+        );
+        
+        console.log(`Privacy updated for ${myEmail}`);
+        res.json({ message: "Privacy settings updated" });
     } catch (error) {
         console.error('Update privacy error:', error);
         res.status(500).json({ message: "Server error" });
@@ -447,25 +574,21 @@ app.post('/api/create-group', protectRoute, async (req, res) => {
             return res.status(400).json({ message: "Group name and members are required." });
         }
         
-        await db.read();
-        
         const memberObjects = members.map(email => ({
             email: email,
             role: "member"
         }));
-        
         memberObjects.push({ email: creatorEmail, role: "admin" });
         
-        const newGroup = {
+        const newGroup = new Group({
             groupId: nanoid(),
             groupName: groupName,
             groupAvatar: "",
             creatorEmail: creatorEmail,
             members: memberObjects
-        };
+        });
         
-        db.data.groups.push(newGroup);
-        await db.write();
+        await newGroup.save();
         
         console.log(`New group created: ${groupName} by ${creatorEmail}`);
         res.status(201).json({ message: "Group created!", group: newGroup });
@@ -481,28 +604,30 @@ app.post('/api/toggle-star', protectRoute, async (req, res) => {
         const { messageId } = req.body;
         const myEmail = req.user.email;
 
-        await db.read();
-        const message = db.data.messages.find(m => m.messageId === messageId);
+        const message = await Message.findOne({ messageId: messageId });
 
         if (!message) {
             return res.status(404).json({ message: "Message not found" });
         }
         
-        const isMyChat = (message.senderEmail === myEmail) || 
-                         (message.receiverEmail === myEmail) ||
-                         (message.receiverGroupId && db.data.groups.find(g => g.groupId === message.receiverGroupId)?.members.some(m => m.email === myEmail));
+        let isMyChat = false;
+        if (message.receiverGroupId) {
+            const group = await Group.findOne({ groupId: message.receiverGroupId }).lean();
+            isMyChat = group && group.members.some(m => m.email === myEmail);
+        } else {
+            isMyChat = (message.senderEmail === myEmail) || (message.receiverEmail === myEmail);
+        }
 
         if (!isMyChat) {
             return res.status(403).json({ message: "Not authorized" });
         }
 
         message.isStarred = !message.isStarred;
-        await db.write();
+        await message.save();
         
         const status = message.isStarred ? 'starred' : 'unstarred';
         console.log(`Message ${messageId} ${status} by ${myEmail}`);
         
-        // YEH HAI FIX: getRoomName ab global hai
         let roomName = message.receiverGroupId 
             ? message.receiverGroupId 
             : getRoomName(message.senderEmail, message.receiverEmail);
@@ -520,27 +645,24 @@ app.post('/api/toggle-star', protectRoute, async (req, res) => {
     }
 });
 
-
+// === Authentication Routes (Updated for MongoDB) ===
 app.post('/register', async (req, res) => {
   try {
     const { email, password } = req.body;
-    await db.read();
-    const existingUser = db.data.users.find(user => user.email === email);
+    let existingUser = await User.findOne({ email: email }).lean();
     if (existingUser) { return res.status(400).send('User already exists'); }
+    
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    const newUser = { 
+    
+    const newUser = new User({ 
       email: email, 
-      password: hashedPassword, 
-      displayName: "", 
-      status: "Offline", 
-      lastSeen: 0, 
-      avatarUrl: "",
-      deletedBy: [],
-      privacy: { lastSeen: "everyone", avatar: "everyone" }
-    };
-    db.data.users.push(newUser);
-    await db.write();
+      password: hashedPassword,
+      displayName: email.split('@')[0] // Default display name
+    });
+    
+    await newUser.save();
+    
     console.log(`NEW USER REGISTERED: ${email}`);
     try {
       await transporter.sendMail({
@@ -551,14 +673,15 @@ app.post('/register', async (req, res) => {
       });
       console.log(`Welcome email sent to: ${email}`);
     } catch (emailError) { console.error(`Failed to send welcome email to ${email}:`, emailError); }
+    
     res.redirect('/login.html');
   } catch (error) { res.status(500).send('Server error'); }
 });
+
 app.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    await db.read();
-    const user = db.data.users.find(user => user.email === email);
+    const user = await User.findOne({ email: email }).lean();
     if (!user) { 
       return res.status(400).send('Invalid email or password'); 
     }
@@ -572,50 +695,49 @@ app.post('/login', loginLimiter, async (req, res) => {
     res.redirect('/chats.html');
   } catch (error) { res.status(500).send('Server error'); }
 });
+
 app.post('/set-name', protectRoute, async (req, res) => {
   try {
     const { displayName } = req.body;
-    await db.read();
-    const user = db.data.users.find(u => u.email === req.user.email);
-    if (user) {
-      user.displayName = displayName;
-      await db.write();
-      console.log(`DISPLAY NAME SET for ${req.user.email}: ${displayName}`);
-      res.redirect('/chats.html');
-    } else { res.status(404).send('User not found'); }
+    await User.updateOne({ email: req.user.email }, { $set: { displayName: displayName } });
+    console.log(`DISPLAY NAME SET for ${req.user.email}: ${displayName}`);
+    res.redirect('/chats.html');
   } catch (error) { res.status(500).send('Server error'); }
 });
+
 app.post('/add-friend', protectRoute, async (req, res) => {
   try {
     const { friendEmail, nickname } = req.body;
     const ownerEmail = req.user.email;
     if (friendEmail === ownerEmail) { return res.status(400).send("You cannot add yourself."); }
-    await db.read();
-    const friendExists = db.data.users.find(u => u.email === friendEmail);
+    
+    const friendExists = await User.findOne({ email: friendEmail }).lean();
     if (!friendExists) { return res.status(404).send("User with this email does not exist."); }
-    const alreadyFriend = db.data.contacts.find(c => c.ownerEmail === ownerEmail && c.friendEmail === friendEmail);
+    
+    const alreadyFriend = await Contact.findOne({ ownerEmail: ownerEmail, friendEmail: friendEmail }).lean();
     if (alreadyFriend) { return res.status(400).send("This user is already in your contacts."); }
-    db.data.contacts.push({ 
+    
+    const newContact = new Contact({ 
       ownerEmail: ownerEmail, 
       friendEmail: friendEmail, 
-      nickname: nickname || friendExists.displayName, 
-      isBlocked: false,
-      isPinned: false
+      nickname: nickname || friendExists.displayName || friendEmail.split('@')[0]
     });
-    await db.write();
+    await newContact.save();
+    
     console.log(`NEW FRIEND added for ${ownerEmail}: ${friendEmail}`);
     res.redirect('/home.html');
   } catch (error) { console.error('Add friend error:', error); res.status(500).send('Server error'); }
 });
+
 app.get('/logout', (req, res) => {
   res.cookie('token', '', { maxAge: 1 });
   res.redirect('/login.html');
 });
+
 app.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
-    await db.read();
-    const user = db.data.users.find(u => u.email === email);
+    const user = await User.findOne({ email: email }).lean();
     if (!user) {
       console.log(`Password reset attempt for non-existent user: ${email}`);
       return res.send("If this email is registered, you will receive a reset link.");
@@ -632,6 +754,7 @@ app.post('/forgot-password', async (req, res) => {
     res.send("Password reset link has been sent to your email.");
   } catch (error) { console.error('Forgot password error:', error); res.status(500).send('Server error'); }
 });
+
 app.post('/reset-password', async (req, res) => {
   try {
     const { token } = req.query;
@@ -645,27 +768,24 @@ app.post('/reset-password', async (req, res) => {
     }
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    await db.read();
-    const user = db.data.users.find(u => u.email === decoded.email);
-    if (!user) { return res.status(404).send('User not found'); }
-    user.password = hashedPassword;
-    await db.write();
+    
+    await User.updateOne({ email: decoded.email }, { $set: { password: hashedPassword } });
+    
     console.log(`Password reset SUCCESS for: ${decoded.email}`);
     res.redirect('/login.html');
   } catch (error) { console.error('Reset password error:', error); res.status(500).send('Server error'); }
 });
-// index.js (Kadam 35.4 - Star FIX - Part 3)
+// index.js (Kadam C.3 - MongoDB Update - Part 3)
 io.on('connection', async (socket) => {
   const userEmail = socket.user.email;
   console.log(`User connected (1-to-1): ${userEmail}`);
   connectedUsers.set(userEmail, socket.id);
   
-  await db.read();
-  const user = db.data.users.find(u => u.email === userEmail);
-  if (user) { user.status = 'Online'; await db.write(); }
+  await User.updateOne({ email: userEmail }, { $set: { status: 'Online' } });
   
-  const myContacts = db.data.contacts.filter(c => c.ownerEmail === userEmail);
-  const myFriends = db.data.contacts.filter(c => c.friendEmail === userEmail);
+  // NAYA: Socket ko bhi batao ki dost online hai (Chats page ke liye)
+  const myContacts = await Contact.find({ ownerEmail: userEmail }).lean();
+  const myFriends = await Contact.find({ friendEmail: userEmail }).lean();
   
   for (const friend of myFriends) {
     const friendSocketId = connectedUsers.get(friend.ownerEmail);
@@ -674,10 +794,9 @@ io.on('connection', async (socket) => {
   for (const contact of myContacts) {
       const friendSocketId = connectedUsers.get(contact.friendEmail);
       if(friendSocketId) {
-          await db.read();
-          const friendUser = db.data.users.find(u => u.email === contact.friendEmail);
+          const friendUser = await User.findOne({ email: contact.friendEmail }).lean();
           if(friendUser) {
-              const { canSeeLastSeen } = canSeeInfo(userEmail, friendUser);
+              const { canSeeLastSeen } = await canSeeInfo(userEmail, friendUser);
               if(canSeeLastSeen) {
                   socket.emit('friend status', { email: contact.friendEmail, status: 'Online' });
               }
@@ -685,25 +804,29 @@ io.on('connection', async (socket) => {
       }
   }
 
-  // (getRoomName function ab global hai, yahan se hata diya gaya)
 
-  socket.on('join room', (roomId) => {
+  // (getRoomName function ab global hai)
+
+  // === NAYA: join room (Updated) ===
+  socket.on('join room', async (roomId) => {
     let roomName = roomId;
     if (roomId.includes('@')) {
         roomName = getRoomName(userEmail, roomId);
     }
+    
     socket.join(roomName);
     console.log(`${userEmail} joined room: ${roomName}`);
-    db.data.groups.forEach(group => {
-        if (group.members.some(m => m.email === userEmail)) {
-            socket.join(group.groupId);
-            console.log(`${userEmail} auto-joined group room: ${group.groupId}`);
-        }
+    
+    // NAYA: Group ke saare rooms (sockets) ko join karo
+    const myGroups = await Group.find({ 'members.email': userEmail }).lean();
+    myGroups.forEach(group => {
+        socket.join(group.groupId);
+        console.log(`${userEmail} auto-joined group room: ${group.groupId}`);
     });
   });
 
+  // === NAYA: send message (Updated) ===
   socket.on('send message', async (data) => {
-    await db.read(); 
     
     const { receiverId, text, tempId, replyTo } = data; 
     
@@ -711,7 +834,7 @@ io.on('connection', async (socket) => {
     const trimmedText = text.trim();
     const senderEmail = userEmail;
     
-    const senderUser = db.data.users.find(u => u.email === senderEmail);
+    const senderUser = await User.findOne({ email: senderEmail }).select('displayName').lean();
     const senderName = (senderUser && senderUser.displayName) ? senderUser.displayName : senderEmail.split('@')[0];
 
     const messageData = {
@@ -726,7 +849,7 @@ io.on('connection', async (socket) => {
       isDeleted: false,
       deletedBy: [],
       replyTo: replyTo || null,
-      isStarred: false, // NAYA
+      isStarred: false,
       tempId: tempId
     };
     
@@ -734,13 +857,13 @@ io.on('connection', async (socket) => {
     let socketsToNotify = [];
 
     if (receiverId.includes('@')) {
-        // 1-to-1 Chat
+        // === 1-to-1 Chat Logic ===
         messageData.receiverEmail = receiverId;
         roomName = getRoomName(senderEmail, receiverId);
 
-        const receiverContact = db.data.contacts.find(c => c.ownerEmail === receiverId && c.friendEmail === senderEmail);
+        const receiverContact = await Contact.findOne({ ownerEmail: receiverId, friendEmail: senderEmail }).lean();
         if (receiverContact && receiverContact.isBlocked) { return; }
-        const senderContact = db.data.contacts.find(c => c.ownerEmail === senderEmail && c.friendEmail === receiverId);
+        const senderContact = await Contact.findOne({ ownerEmail: senderEmail, friendEmail: receiverId }).lean();
         if (senderContact && senderContact.isBlocked) {
           return socket.emit('send error', { message: 'You have blocked this user. Unblock them to send a message.' });
         }
@@ -753,9 +876,9 @@ io.on('connection', async (socket) => {
         socketsToNotify.push(connectedUsers.get(senderEmail));
         
     } else {
-        // Group Chat
+        // === Group Chat Logic ===
         messageData.receiverGroupId = receiverId;
-        const group = db.data.groups.find(g => g.groupId === receiverId);
+        const group = await Group.findOne({ groupId: receiverId }).lean();
         if (!group) return; 
         
         group.members.forEach(member => {
@@ -767,8 +890,8 @@ io.on('connection', async (socket) => {
         messageData.status = 'delivered';
     }
 
-    db.data.messages.push(messageData);
-    await db.write();
+    const newMessage = new Message(messageData);
+    await newMessage.save();
     
     io.to(roomName).emit('new message', messageData);
     
@@ -781,14 +904,14 @@ io.on('connection', async (socket) => {
   
   socket.on('delete message', async (data) => {
     try {
-      await db.read();
       const { messageId } = data;
-      const message = db.data.messages.find(m => m.messageId === messageId);
+      const message = await Message.findOne({ messageId: messageId });
+      
       if (message && message.senderEmail === userEmail) {
         message.text = "This message was deleted";
         message.isDeleted = true;
         message.replyTo = null;
-        await db.write();
+        await message.save();
         
         let roomName = '';
         if (message.receiverGroupId) {
@@ -805,63 +928,68 @@ io.on('connection', async (socket) => {
 
   socket.on('delete for me', async (data) => {
     try {
-      await db.read();
       const { messageId } = data;
-      const message = db.data.messages.find(m => m.messageId === messageId);
-      if (message && !message.deletedBy.includes(userEmail)) {
-        message.deletedBy.push(userEmail);
-        await db.write();
-        socket.emit('message removed', { messageId: messageId });
-        socket.emit('chat list update');
-      }
+      // 'Delete for me' sirf user ke local state mein hota hai, lekin hume DB mein track karna hai
+      const update = { $push: { deletedBy: userEmail } };
+      await Message.updateOne({ messageId: messageId }, update);
+
+      socket.emit('message removed', { messageId: messageId });
+      socket.emit('chat list update');
     } catch (error) {
       console.error('Delete for me error:', error);
     }
   });
 
   socket.on('mark messages seen', async (data) => {
-    await db.read();
     const { chatId } = data;
     const myEmail = socket.user.email;
-    let messagesUpdated = false;
-    const messagesToUpdate = [];
-    
-    db.data.messages.forEach(msg => {
-        const isThisChat = (msg.receiverEmail === myEmail && msg.senderEmail === chatId) || (msg.receiverGroupId === chatId && msg.senderEmail !== myEmail);
+
+    try {
+        const query = {
+            status: { $ne: 'seen' },
+            senderEmail: { $ne: myEmail },
+            $or: [
+                { receiverEmail: myEmail, senderEmail: chatId },
+                { receiverGroupId: chatId }
+            ]
+        };
         
-        if (isThisChat && msg.status !== 'seen') {
-            msg.status = 'seen';
-            messagesUpdated = true;
-            messagesToUpdate.push({ messageId: msg.messageId, status: 'seen' });
+        const update = { $set: { status: 'seen' } };
+        const result = await Message.updateMany(query, update);
+
+        if (result.modifiedCount > 0) {
+            console.log(`Messages in chat ${chatId} marked as SEEN by ${myEmail}`);
+            
+            const updatedMessages = await Message.find({
+                ...query,
+                status: 'seen' // Find the ones we just updated
+            }).select('messageId status').lean();
+
+            if (chatId.includes('@')) {
+                const friendSocketId = connectedUsers.get(chatId);
+                if (friendSocketId) {
+                    io.to(friendSocketId).emit('messages updated', updatedMessages);
+                    io.to(friendSocketId).emit('chat list update');
+                }
+            } else {
+                const group = await Group.findOne({ groupId: chatId }).lean();
+                if (group) {
+                    group.members.forEach(member => {
+                        if (member.email !== myEmail) {
+                            const memberSocketId = connectedUsers.get(member.email);
+                            if (memberSocketId) {
+                                io.to(memberSocketId).emit('messages updated', updatedMessages);
+                            }
+                        }
+                    });
+                }
+            }
         }
-    });
-    
-    if (messagesUpdated) {
-      await db.write();
-      console.log(`Messages in chat ${chatId} marked as SEEN by ${myEmail}`);
-      
-      if (chatId.includes('@')) {
-          const friendSocketId = connectedUsers.get(chatId);
-          if (friendSocketId) {
-            io.to(friendSocketId).emit('messages updated', messagesToUpdate);
-            io.to(friendSocketId).emit('chat list update');
-          }
-      } 
-      else {
-          const group = db.data.groups.find(g => g.groupId === chatId);
-          if(group) {
-              group.members.forEach(member => {
-                  if(member.email !== myEmail) {
-                      const memberSocketId = connectedUsers.get(member.email);
-                      if(memberSocketId) {
-                          io.to(memberSocketId).emit('messages updated', messagesToUpdate);
-                      }
-                  }
-              });
-          }
-      }
+    } catch (error) {
+        console.error('Mark messages seen error:', error);
     }
   });
+
 
   socket.on('start typing', (data) => {
     const { chatId } = data;
@@ -879,14 +1007,10 @@ io.on('connection', async (socket) => {
     console.log(`User disconnected (1-to-1): ${userEmail}`);
     connectedUsers.delete(userEmail);
     const lastSeenTime = Date.now();
-    await db.read();
-    const user = db.data.users.find(u => u.email === userEmail);
-    if (user) {
-      user.status = 'Offline';
-      user.lastSeen = lastSeenTime;
-      await db.write();
-    }
-    const friends = db.data.contacts.filter(c => c.friendEmail === userEmail);
+    
+    await User.updateOne({ email: userEmail }, { $set: { status: 'Offline', lastSeen: lastSeenTime } });
+    
+    const friends = await Contact.find({ friendEmail: userEmail }).lean();
     for (const friend of friends) {
       const friendSocketId = connectedUsers.get(friend.ownerEmail);
       if (friendSocketId) {
@@ -898,7 +1022,7 @@ io.on('connection', async (socket) => {
 
 // === Server ko Start Karna ===
 async function startServer() {
-  await initializeDatabase();
+  // initializeDatabase() ki zaroorat nahi, MongoDB models khud handle karte hain
   server.listen(PORT, () => {
     console.log(`🍉 Wappy server http://localhost:${PORT} par chal raha hai`);
   });
