@@ -19,6 +19,12 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 const app = express();
+
+// === RENDER PROXY FIX ===
+// Ye line Render par 'express-rate-limit' ke 'X-Forwarded-For' error ko fix karti hai
+app.set('trust proxy', 1);
+// === END FIX ===
+
 const server = http.createServer(app);
 const io = new Server(server);
 const PORT = 3000;
@@ -406,94 +412,9 @@ app.get('/api/chats', protectRoute, async (req, res) => {
     }
 });
 // index.js (Kadam C.3 - MongoDB Update - Part 2)
-app.get('/api/chats', protectRoute, async (req, res) => {
-    try {
-        const myEmail = req.user.email;
-        const searchQuery = req.query.q || '';
-        
-        // 1. Find all messages involving the user
-        const allMessages = await Message.find({
-            $and: [
-                { deletedBy: { $nin: [myEmail] } },
-                { $or: [
-                    { senderEmail: myEmail },
-                    { receiverEmail: myEmail },
-                    { receiverGroupId: { $in: (await Group.find({ 'members.email': myEmail }).select('groupId').lean()).map(g => g.groupId) } }
-                ]}
-            ]
-        }).sort({ timestamp: -1 }).lean(); // Sort by new to old to easily find the last one
+// [NOTE: Aapke original code mein '/api/chats' route do baar tha, maine ek remove kar diya hai]
+// [Aapka doosra '/api/chats' route yahan se shuru hota tha, woh duplicate tha]
 
-        const conversations = new Map();
-        allMessages.forEach(msg => {
-            let convoId = '';
-            let isGroup = false;
-
-            if (msg.receiverGroupId) {
-                convoId = msg.receiverGroupId;
-                isGroup = true;
-            } else {
-                convoId = msg.senderEmail === myEmail ? msg.receiverEmail : msg.senderEmail;
-            }
-            
-            if (!conversations.has(convoId)) { // Since they are sorted, the first one we find is the last message
-                conversations.set(convoId, {
-                    id: convoId,
-                    isGroup: isGroup,
-                    text: msg.isDeleted ? "This message was deleted" : msg.text,
-                    timestamp: msg.timestamp,
-                    senderEmail: msg.senderEmail,
-                    status: msg.status
-                });
-            }
-        });
-
-        const chatList = Array.from(conversations.values());
-        
-        let detailedChatList = await Promise.all(chatList.map(async (chat) => {
-            if (chat.isGroup) {
-                const group = await Group.findOne({ groupId: chat.id }).lean();
-                if (!group) return null;
-                return {
-                    ...chat,
-                    nickname: group.groupName,
-                    avatarUrl: group.groupAvatar || '',
-                    isPinned: false // (Group pinning abhi nahi)
-                };
-            } else {
-                const contact = await Contact.findOne({ ownerEmail: myEmail, friendEmail: chat.id }).lean();
-                const friendUser = await User.findOne({ email: chat.id }).lean();
-                if (!contact || !friendUser) return null;
-                const { canSeeAvatar } = await canSeeInfo(myEmail, friendUser);
-                return {
-                    ...chat,
-                    nickname: contact.nickname,
-                    avatarUrl: canSeeAvatar ? friendUser.avatarUrl : '',
-                    isPinned: contact.isPinned
-                };
-            }
-        }));
-        
-        detailedChatList = detailedChatList.filter(Boolean);
-
-        if (searchQuery) {
-            detailedChatList = detailedChatList.filter(c => 
-                c.nickname.toLowerCase().includes(searchQuery.toLowerCase())
-            );
-        }
-
-        detailedChatList.sort((a, b) => {
-            if (a.isPinned && !b.isPinned) return -1;
-            if (!a.isPinned && b.isPinned) return 1;
-            return b.timestamp - a.timestamp;
-        });
-
-        res.json(detailedChatList);
-
-    } catch (error) {
-        console.error('Get chats error:', error);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
 app.post('/api/upload-avatar', protectRoute, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) { return res.status(400).send('No file uploaded.'); }
@@ -646,25 +567,39 @@ app.post('/api/toggle-star', protectRoute, async (req, res) => {
 });
 
 // === Authentication Routes (Updated for MongoDB) ===
+// === Authentication Routes (Updated for MongoDB) ===
 app.post('/register', async (req, res) => {
   try {
     const { email, password } = req.body;
-    let existingUser = await User.findOne({ email: email }).lean();
-    if (existingUser) { return res.status(400).send('User already exists'); }
     
+    // Check 1: Kya user pehle se hai?
+    console.log(`Register attempt: Checking if user exists: ${email}`);
+    let existingUser = await User.findOne({ email: email }).lean();
+    if (existingUser) { 
+      console.log(`Register failed: User already exists: ${email}`);
+      return res.status(400).send('User already exists'); 
+    }
+    
+    // Check 2: Password hashing
+    console.log(`Register attempt: Hashing password for ${email}`);
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
+    // Check 3: Naya user object banana
     const newUser = new User({ 
       email: email, 
       password: hashedPassword,
       displayName: email.split('@')[0] // Default display name
     });
     
+    // Check 4: Database mein save karna (YAHAN ERROR HO SAKTA HAI)
+    console.log(`Register attempt: Saving new user ${email} to database...`);
     await newUser.save();
-    
     console.log(`NEW USER REGISTERED: ${email}`);
+    
+    // Check 5: Welcome email bhejna (YA YAHAN ERROR HO SAKTA HAI)
     try {
+      console.log(`Register attempt: Sending welcome email to ${email}...`);
       await transporter.sendMail({
         from: `"Wappy Support" <${process.env.EMAIL_USER}>`,
         to: email,
@@ -672,12 +607,25 @@ app.post('/register', async (req, res) => {
         html: `<h1>Welcome, ${email}!</h1><p>Thank you for joining Wappy. You can now login and start chatting with your friends.</p>`
       });
       console.log(`Welcome email sent to: ${email}`);
-    } catch (emailError) { console.error(`Failed to send welcome email to ${email}:`, emailError); }
+    } catch (emailError) { 
+      // Agar sirf email fail ho, toh error log karo par aage badho
+      console.error(`--- EMAIL FAILED but user was registered ---`);
+      console.error(`Failed to send welcome email to ${email}:`, emailError);
+      console.error(`--- END EMAIL ERROR ---`);
+    }
     
     res.redirect('/login.html');
-  } catch (error) { res.status(500).send('Server error'); }
-});
 
+  } catch (error) { 
+    // YEH HAI ASAL FIX
+    // Agar upar kahin bhi (DB save, bcrypt) error aaye, toh yahan log hoga
+    console.error('!!!!!!!!!!!!!!!!! REGISTER FAILED !!!!!!!!!!!!!!!!!');
+    console.error('An error occurred in the POST /register route:');
+    console.error(error); // Error ko terminal mein print karo
+    console.error('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+    res.status(500).send('Server error. Check terminal logs.'); 
+  }
+});
 app.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
