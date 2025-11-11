@@ -463,7 +463,8 @@ app.post('/register', async (req, res, next) => { // NAYA: 'next' add kiya
       const msg = {
         to: email, from: process.env.EMAIL_USER, subject: 'Welcome to Wappy! 🍉',
         text: `Welcome, ${email}! Thank you for joining Wappy. You can now login and start chatting with your friends.`,
-        html: `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;"><div style="background-color: #22c55e; color: white; padding: 20px; text-align: center;"><h1 style="margin: 0; font-size: 28px;">Welcome to Wappy! 🍉</h1></div><div style="padding: 30px;"><p style="font-size: 18px;">Hello ${email},</p><p>Thank you for joining Wappy. We're excited to have you on board!</p><p>You can now log in and start chatting with your friends and family.</p><a href="https://wappy.onrender.com/login.html" style="background-color: #22c55e; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 20px; font-weight: bold;">Login to Your Account</a><p style="margin-top: 30px; font-size: 14px; color: #777;">If you did not sign up for this account, you can safely ignore this email.</p><hr style="border: 0; border-top: 1px solid #eee; margin-top: 20px;"><p style="font-size: 12px; color: #999; text-align: center;">&copy; ${new Date().getFullYear()} Wappy. All rights reserved.</p></div></div>`
+        // === NAYA: URL FIX (wappy-pro) ===
+        html: `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;"><div style="background-color: #22c55e; color: white; padding: 20px; text-align: center;"><h1 style="margin: 0; font-size: 28px;">Welcome to Wappy! 🍉</h1></div><div style="padding: 30px;"><p style="font-size: 18px;">Hello ${email},</p><p>Thank you for joining Wappy. We're excited to have you on board!</p><p>You can now log in and start chatting with your friends and family.</p><a href="https://wappy-pro.onrender.com/login.html" style="background-color: #22c55e; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 20px; font-weight: bold;">Login to Your Account</a><p style="margin-top: 30px; font-size: 14px; color: #777;">If you did not sign up for this account, you can safely ignore this email.</p><hr style="border: 0; border-top: 1px solid #eee; margin-top: 20px;"><p style="font-size: 12px; color: #999; text-align: center;">&copy; ${new Date().getFullYear()} Wappy. All rights reserved.</p></div></div>`
       };
       await sgMail.send(msg);
       console.log(`[Wappy Register] Welcome email sent to: ${email}`);
@@ -538,8 +539,8 @@ app.post('/forgot-password', async (req, res, next) => { // NAYA: 'next' add kiy
     }
     const resetToken = jwt.sign({ email: user.email }, JWT_RESET_SECRET, { expiresIn: '10m' });
     
-    // NAYA: 'new-pass.html' se waapas 'reset-password.html' kar diya
-    const resetUrl = `https://wappy.onrender.com/reset-password.html?token=${resetToken}`;
+    // === NAYA: URL FIX (wappy-pro) & File Name Fix (reset-password.html) ===
+    const resetUrl = `https://wappy-pro.onrender.com/reset-password.html?token=${resetToken}`;
     
     console.log(`[Wappy Forgot] Password reset link (SendGrid) sending to: ${email}`);
     
