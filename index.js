@@ -28,7 +28,7 @@ app.set('trust proxy', 1);
 
 const server = http.createServer(app);
 const io = new Server(server);
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const JWT_SECRET = 'your-very-secret-key-12345';
 const JWT_RESET_SECRET = 'your-password-reset-key-67890';
 const connectedUsers = new Map();
