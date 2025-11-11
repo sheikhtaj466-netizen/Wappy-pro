@@ -711,21 +711,62 @@ app.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email: email }).lean();
+    
     if (!user) {
       console.log(`Password reset attempt for non-existent user: ${email}`);
       return res.send("If this email is registered, you will receive a reset link.");
     }
+    
     const resetToken = jwt.sign({ email: user.email }, JWT_RESET_SECRET, { expiresIn: '10m' });
-    const resetUrl = `http://localhost:3000/reset-password.html?token=${resetToken}`;
-    await transporter.sendMail({
-      from: `"Wappy Support" <${process.env.EMAIL_USER}>`,
-      to: user.email,
+    
+    // NAYA: URL ko localhost se Render URL par change kiya
+    const resetUrl = `https://wappy.onrender.com/reset-password.html?token=${resetToken}`;
+    
+    console.log(`Password reset link (SendGrid) sending to: ${email}`);
+    
+    // NAYA: SendGrid Email
+    const msg = {
+      to: email,
+      from: process.env.EMAIL_USER, // Aapka verified sender
       subject: "Your Wappy Password Reset Link",
-      html: `<p>Hello ${user.displayName || user.email},</p><p>Click the link below to reset your password. This link is valid for 10 minutes only.</p><a href="${resetUrl}" style="padding: 10px 20px; background-color: #22c55e; color: white; text-decoration: none; border-radius: 5px;">Reset Your Password</a><p>If you did not request this, please ignore this email.</p>`
-    });
+      text: `Hello ${user.displayName || user.email}, Click the link below to reset your password. This link is valid for 10 minutes only. ${resetUrl}`,
+      
+      // NAYA: Professional HTML
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+          <div style="background-color: #f4b400; color: white; padding: 20px; text-align: center;">
+            <h1 style="margin: 0; font-size: 28px;">Password Reset Request</h1>
+          </div>
+          <div style="padding: 30px;">
+            <p style="font-size: 18px;">Hello ${user.displayName || user.email},</p>
+            <p>We received a request to reset your password for your Wappy account. You can reset your password by clicking the button below.</p>
+            <p><strong>This link is valid for 10 minutes only.</strong></p>
+            <a href="${resetUrl}" style="background-color: #f4b400; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 20px; font-weight: bold;">
+              Reset Your Password
+            </a>
+            <p style="margin-top: 30px; font-size: 14px; color: #777;">
+              If you did not request this, please ignore this email. Your password will not be changed.
+            </p>
+          </div>
+        </div>
+      `
+    };
+    
+    await sgMail.send(msg);
+    
     console.log(`Password reset link sent to: ${email}`);
     res.send("Password reset link has been sent to your email.");
-  } catch (error) { console.error('Forgot password error:', error); res.status(500).send('Server error'); }
+    
+  } catch (error) { 
+    console.error('--- SENDGRID FORGOT PASSWORD ERROR ---');
+    if (error.response) {
+      console.error(error.response.body);
+    } else {
+      console.error(error);
+    }
+    console.error('--- END ERROR ---');
+    res.status(500).send('Server error');
+  }
 });
 
 app.post('/reset-password', async (req, res) => {
