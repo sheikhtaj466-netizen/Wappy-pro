@@ -720,7 +720,7 @@ app.post('/forgot-password', async (req, res) => {
     const resetToken = jwt.sign({ email: user.email }, JWT_RESET_SECRET, { expiresIn: '10m' });
     
     // NAYA: URL ko localhost se Render URL par change kiya
-    const resetUrl = `https://wappy.onrender.com/new-pass.html?token=${resetToken}`;
+    const resetUrl = \https://www.google.com/search?q=https://wappy.onrender.com/new-pass.html%3Ftoken%3D${resetToken}`;`
     
     console.log(`Password reset link (SendGrid) sending to: ${email}`);
     
