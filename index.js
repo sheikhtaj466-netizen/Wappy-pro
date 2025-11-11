@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 import { Server } from 'socket.io';
 import { nanoid } from 'nanoid';
 import dotenv from 'dotenv';
-import nodemailer from 'nodemailer';
+import sgMail from '@sendgrid/mail';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -18,6 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 const app = express();
 
 // === RENDER PROXY FIX ===
@@ -31,13 +32,6 @@ const PORT = 3000;
 const JWT_SECRET = 'your-very-secret-key-12345';
 const JWT_RESET_SECRET = 'your-password-reset-key-67890';
 const connectedUsers = new Map();
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
 const storage = multer.diskStorage({
   destination: 'public/uploads/avatars/',
   filename: function (req, file, cb) {
@@ -598,20 +592,51 @@ app.post('/register', async (req, res) => {
     console.log(`NEW USER REGISTERED: ${email}`);
     
     // Check 5: Welcome email bhejna (YA YAHAN ERROR HO SAKTA HAI)
+        // Check 5: Welcome email bhejna (with SendGrid)
     try {
-      console.log(`Register attempt: Sending welcome email to ${email}...`);
-      await transporter.sendMail({
-        from: `"Wappy Support" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: "Welcome to Wappy! 🍉",
-        html: `<h1>Welcome, ${email}!</h1><p>Thank you for joining Wappy. You can now login and start chatting with your friends.</p>`
-      });
+      console.log(`Register attempt: Sending welcome email to ${email} via SendGrid...`);
+      
+      const msg = {
+        to: email, // Naye user ka email
+        from: process.env.EMAIL_USER, // Aapka SendGrid par verified email
+        subject: 'Welcome to Wappy! 🍉',
+        text: `Welcome, ${email}! Thank you for joining Wappy. You can now login and start chatting with your friends.`, // Ye unke liye jinko HTML nahi dikhta
+        
+        // Ye hai Professional HTML Email
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+            <div style="background-color: #22c55e; color: white; padding: 20px; text-align: center;">
+              <h1 style="margin: 0; font-size: 28px;">Welcome to Wappy! 🍉</h1>
+            </div>
+            <div style="padding: 30px;">
+              <p style="font-size: 18px;">Hello ${email},</p>
+              <p>Thank you for joining Wappy. We're excited to have you on board!</p>
+              <p>You can now log in and start chatting with your friends and family.</p>
+              <a href="https://wappy.onrender.com/login.html" style="background-color: #22c55e; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 20px; font-weight: bold;">
+                Login to Your Account
+              </a>
+              <p style="margin-top: 30px; font-size: 14px; color: #777;">
+                If you did not sign up for this account, you can safely ignore this email.
+              </p>
+              <hr style="border: 0; border-top: 1px solid #eee; margin-top: 20px;">
+              <p style="font-size: 12px; color: #999; text-align: center;">&copy; ${new Date().getFullYear()} Wappy. All rights reserved.</p>
+            </div>
+          </div>
+        `
+      };
+      
+      await sgMail.send(msg);
       console.log(`Welcome email sent to: ${email}`);
+      
     } catch (emailError) { 
-      // Agar sirf email fail ho, toh error log karo par aage badho
-      console.error(`--- EMAIL FAILED but user was registered ---`);
-      console.error(`Failed to send welcome email to ${email}:`, emailError);
-      console.error(`--- END EMAIL ERROR ---`);
+      // Agar SendGrid fail ho (bohot kam hota hai)
+      console.error(`--- SENDGRID EMAIL FAILED but user was registered ---`);
+      if (emailError.response) {
+        console.error(emailError.response.body); // SendGrid ke asli error
+      } else {
+        console.error(emailError);
+      }
+      console.error(`--- END SENDGRID ERROR ---`);
     }
     
     res.redirect('/login.html');
