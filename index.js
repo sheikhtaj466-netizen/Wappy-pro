@@ -1,4 +1,4 @@
-// index.js (Kadam 35 - FINAL PROFESSIONAL FIX)
+// index.js (FINAL - Sab Fixes Ke Saath)
 import express from 'express';
 import http from 'http';
 import bcrypt from 'bcryptjs';
@@ -7,15 +7,15 @@ import cookieParser from 'cookie-parser';
 import { Server } from 'socket.io';
 import { nanoid } from 'nanoid';
 import dotenv from 'dotenv';
-import sgMail from '@sendgrid/mail'; // NAYA: SendGrid
+import sgMail from '@sendgrid/mail'; // SendGrid Email
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import mongoose from 'mongoose'; // MongoDB
+import { v2 as cloudinary } from 'cloudinary'; // NAYA: Cloudinary
+import { CloudinaryStorage } from 'multer-storage-cloudinary'; // NAYA: Cloudinary
 import { error } from 'console';
-import { v2 as cloudinary } from 'cloudinary';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +24,7 @@ dotenv.config();
 
 // === NAYA: SendGrid API Key Setup ===
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
 // === NAYA: Cloudinary Config ===
 cloudinary.config({ 
   cloud_name: process.env.CLOUD_NAME, 
@@ -34,11 +35,20 @@ cloudinary.config({
 const app = express();
 
 // === NAYA: RENDER PORT FIX ===
-// Render ka diya PORT istemaal karo, ya local ke liye 3000
 const PORT = process.env.PORT || 3000;
 
 // === NAYA: RENDER PROXY FIX ===
-// === NAYA: Cloudinary Storage Engine ===
+app.set('trust proxy', 1);
+
+// === NAYA: Server aur IO definition (FIXED) ===
+const server = http.createServer(app);
+const io = new Server(server);
+
+const JWT_SECRET = 'your-very-secret-key-12345';
+const JWT_RESET_SECRET = 'your-password-reset-key-67890';
+const connectedUsers = new Map();
+
+// === NAYA: Cloudinary Storage Engine (FIXED) ===
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
@@ -51,6 +61,7 @@ const storage = new CloudinaryStorage({
     }
   },
 });
+// === END NAYA STORAGE ===
 
 const upload = multer({ storage: storage });
 const MESSAGES_PER_PAGE = 20;
@@ -69,8 +80,6 @@ mongoose.connect(process.env.MONGODB_URI)
   .catch(err => console.error('[Wappy DB] MongoDB connection error:', err));
 
 // === Mongoose Models (Schemas) ===
-// (In models ko simple rakha gaya hai, aapke original jaisa hi)
-
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true, index: true },
     password: { type: String, required: true },
@@ -136,8 +145,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // === NAYA: ULTRA-ADVANCED STATIC PATH FIX ===
-// Ye 'process.cwd()' (Render ka project root) istemaal karta hai,
-// __dirname par depend nahi karta. Ye 100% reliable hai.
 const publicPath = path.join(process.cwd(), 'public');
 app.use(express.static(publicPath));
 console.log(`[Wappy Server] Serving static files from: ${publicPath}`);
@@ -145,22 +152,27 @@ console.log(`[Wappy Server] Serving static files from: ${publicPath}`);
 
 const protectRoute = (req, res, next) => {
   const token = req.cookies.token;
-  if (!token) { return res.redirect('/login.html'); } // Login page par bhejo
+  if (!token) { return res.redirect('/login.html'); }
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // { email: "..." }
+    req.user = decoded; 
     next();
   } catch (error) {
-    return res.redirect('/login.html'); // Agar token galat hai
+    return res.redirect('/login.html');
   }
 };
 
+// === NAYA: IO Definition yahan se hata kar upar (Line 43) kar diya gaya hai ===
+// const io = new Server(server); // Ye line pehle yahan thi (galat)
+// ...
+
+// === NAYA: IO.USE AB SAHI CHALEGA ===
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.headers.cookie?.split('; ').find(row => row.startsWith('token='))?.split('=')[1];
     if (!token) { return next(new Error('Authentication error')); }
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await User.findOne({ email: decoded.email }).lean(); // .lean() faster read-only
+    const user = await User.findOne({ email: decoded.email }).lean(); 
     if (!user) { return next(new Error('User not found')); }
     socket.user = user;
     next();
@@ -171,28 +183,26 @@ io.use(async (socket, next) => {
 
 const getRoomName = (email1, email2) => [email1, email2].sort().join('-');
 
-// === HTTP Routes (Updated for MongoDB) ===
-
-// Ye route '/login.html', '/register.html' etc. ko public folder se uthayega
+// === HTTP Routes ===
 app.get('/', protectRoute, (req, res) => { res.redirect('/chats.html'); });
 app.get('/home.html', protectRoute, async (req, res) => {
   const user = await User.findOne({ email: req.user.email }).lean();
   if (!user || !user.displayName || user.displayName === "") { return res.redirect('/set-name.html'); }
-  res.sendFile(path.join(publicPath, 'home.html')); // NAYA: Sahi path
+  res.sendFile(path.join(publicPath, 'home.html')); 
 });
 app.get('/chats.html', protectRoute, async (req, res) => {
   const user = await User.findOne({ email: req.user.email }).lean();
   if (!user || !user.displayName || user.displayName === "") { return res.redirect('/set-name.html'); }
-  res.sendFile(path.join(publicPath, 'chats.html')); // NAYA: Sahi path
+  res.sendFile(path.join(publicPath, 'chats.html'));
 });
 app.get('/chat.html', protectRoute, (req, res) => {
-  res.sendFile(path.join(publicPath, 'chat.html')); // NAYA: Sahi path
+  res.sendFile(path.join(publicPath, 'chat.html'));
 });
 app.get('/profile.html', protectRoute, (req, res) => {
-  res.sendFile(path.join(publicPath, 'profile.html')); // NAYA: Sahi path
+  res.sendFile(path.join(publicPath, 'profile.html'));
 });
 app.get('/create-group.html', protectRoute, (req, res) => {
-  res.sendFile(path.join(publicPath, 'create-group.html')); // NAYA: Sahi path
+  res.sendFile(path.join(publicPath, 'create-group.html'));
 });
 
 app.get('/api/me', protectRoute, async (req, res) => {
@@ -203,32 +213,22 @@ app.get('/api/me', protectRoute, async (req, res) => {
 async function canSeeInfo(requesterEmail, targetUser) {
     const isContact = await Contact.findOne({ ownerEmail: targetUser.email, friendEmail: requesterEmail });
     let canSeeAvatar = false;
-    if (targetUser.privacy.avatar === 'everyone') {
-        canSeeAvatar = true;
-    } else if (targetUser.privacy.avatar === 'contacts' && isContact) {
-        canSeeAvatar = true;
-    }
+    if (targetUser.privacy.avatar === 'everyone') { canSeeAvatar = true; } 
+    else if (targetUser.privacy.avatar === 'contacts' && isContact) { canSeeAvatar = true; }
     let canSeeLastSeen = false;
-    if (targetUser.privacy.lastSeen === 'everyone') {
-        canSeeLastSeen = true;
-    } else if (targetUser.privacy.lastSeen === 'contacts' && isContact) {
-        canSeeLastSeen = true;
-    }
+    if (targetUser.privacy.lastSeen === 'everyone') { canSeeLastSeen = true; } 
+    else if (targetUser.privacy.lastSeen === 'contacts' && isContact) { canSeeLastSeen = true; }
     return { canSeeAvatar, canSeeLastSeen };
 }
-
 app.get('/api/userinfo/:email', protectRoute, async (req, res) => {
   try {
     const friendEmail = req.params.email;
     const ownerEmail = req.user.email;
     const contact = await Contact.findOne({ ownerEmail: ownerEmail, friendEmail: friendEmail }).lean();
     const friendUser = await User.findOne({ email: friendEmail }).lean();
-    
     if (contact && friendUser) {
       const { canSeeAvatar, canSeeLastSeen } = await canSeeInfo(ownerEmail, friendUser);
-      res.json({ 
-        email: contact.friendEmail, 
-        displayName: contact.nickname,
+      res.json({ email: contact.friendEmail, displayName: contact.nickname,
         status: canSeeLastSeen ? friendUser.status : 'Offline',
         lastSeen: canSeeLastSeen ? friendUser.lastSeen : 0,
         avatarUrl: canSeeAvatar ? friendUser.avatarUrl : '',
@@ -242,47 +242,31 @@ app.get('/api/groupinfo/:groupId', protectRoute, async (req, res) => {
     try {
         const groupId = req.params.groupId;
         const group = await Group.findOne({ groupId: groupId }).lean();
-        
         if (!group) { return res.status(404).json({ message: "Group not found" }); }
         const isMember = group.members.some(m => m.email === req.user.email);
         if (!isMember) { return res.status(403).json({ message: "You are not a member of this group" }); }
-        
         const detailedMembers = await Promise.all(group.members.map(async (member) => {
             const user = await User.findOne({ email: member.email }).select('displayName').lean();
-            return {
-                email: member.email,
-                role: member.role,
+            return { email: member.email, role: member.role,
                 displayName: (user && user.displayName) ? user.displayName : member.email.split('@')[0]
             };
         }));
         res.json({ ...group, members: detailedMembers });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
+
 app.get('/api/messages/:id', protectRoute, async (req, res) => {
   const myEmail = req.user.email;
   const id = req.params.id;
   const cursor = req.query.cursor ? parseInt(req.query.cursor) : Date.now();
-  
-  const query = {
-      $and: [
-          { timestamp: { $lt: cursor } },
-          { deletedBy: { $nin: [myEmail] } },
-          { $or: [
-              { senderEmail: myEmail, receiverEmail: id },
-              { senderEmail: id, receiverEmail: myEmail },
-              { receiverGroupId: id }
-          ]}
-      ]
-  };
-
+  const query = { $and: [ { timestamp: { $lt: cursor } }, { deletedBy: { $nin: [myEmail] } },
+      { $or: [ { senderEmail: myEmail, receiverEmail: id }, { senderEmail: id, receiverEmail: myEmail }, { receiverGroupId: id } ]}
+  ]};
   try {
       const messages = await Message.find(query).sort({ timestamp: -1 }).limit(MESSAGES_PER_PAGE).lean();
       const nextCursor = messages.length === MESSAGES_PER_PAGE ? messages[messages.length - 1].timestamp : null;
       res.json({ messages: messages.reverse(), nextCursor: nextCursor });
-  } catch (error) {
-      console.error("[Wappy Error] Error fetching messages:", error);
-      res.status(500).json({ message: "Server error" });
-  }
+  } catch (error) { console.error("[Wappy Error] Error fetching messages:", error); res.status(500).json({ message: "Server error" }); }
 });
 
 app.get('/api/contacts', protectRoute, async (req, res) => {
@@ -291,7 +275,6 @@ app.get('/api/contacts', protectRoute, async (req, res) => {
     const searchQuery = req.query.q || '';
     let query = { ownerEmail: ownerEmail };
     if (searchQuery) { query.nickname = { $regex: searchQuery, $options: 'i' }; }
-    
     const myContacts = await Contact.find(query).lean();
     const detailedContacts = await Promise.all(myContacts.map(async (contact) => {
       const friendUser = await User.findOne({ email: contact.friendEmail }).lean();
@@ -313,21 +296,16 @@ app.get('/api/chats', protectRoute, async (req, res) => {
     try {
         const myEmail = req.user.email;
         const searchQuery = req.query.q || '';
-        const allMessages = await Message.find({
-            $and: [ { deletedBy: { $nin: [myEmail] } },
+        const allMessages = await Message.find({ $and: [ { deletedBy: { $nin: [myEmail] } },
                 { $or: [ { senderEmail: myEmail }, { receiverEmail: myEmail },
                     { receiverGroupId: { $in: (await Group.find({ 'members.email': myEmail }).select('groupId').lean()).map(g => g.groupId) } }
                 ]}
-            ]
-        }).sort({ timestamp: -1 }).lean(); 
-
+            ]}).sort({ timestamp: -1 }).lean(); 
         const conversations = new Map();
         allMessages.forEach(msg => {
-            let convoId = '';
-            let isGroup = false;
+            let convoId = ''; let isGroup = false;
             if (msg.receiverGroupId) { convoId = msg.receiverGroupId; isGroup = true; } 
             else { convoId = msg.senderEmail === myEmail ? msg.receiverEmail : msg.senderEmail; }
-            
             if (!conversations.has(convoId)) {
                 conversations.set(convoId, { id: convoId, isGroup: isGroup, text: msg.isDeleted ? "This message was deleted" : msg.text, timestamp: msg.timestamp, senderEmail: msg.senderEmail, status: msg.status });
             }
@@ -357,16 +335,21 @@ app.get('/api/chats', protectRoute, async (req, res) => {
     } catch (error) { console.error('[Wappy Error] Get chats error:', error); res.status(500).json({ message: 'Server error' }); }
 });
 
-app.post('/api/upload-avatar', protectRoute, upload.single('avatar'), async (req, res) => {
+// === NAYA: Cloudinary Avatar Upload Route (FIXED) ===
+app.post('/api/upload-avatar', protectRoute, upload.single('avatar'), async (req, res, next) => { // NAYA: 'next' add kiya
   try {
     if (!req.file) { return res.status(400).send('No file uploaded.'); }
-    const avatarUrl = req.file.path;
-    
+    // NAYA: URL 'req.file.path' se aa raha hai
+    const avatarUrl = req.file.path; 
     await User.updateOne({ email: req.user.email }, { $set: { avatarUrl: avatarUrl } });
     console.log(`[Wappy] Avatar updated for ${req.user.email}: ${avatarUrl}`);
     res.redirect('/profile.html');
-  } catch (error) { console.error('[Wappy Error] Avatar upload error:', error); res.status(500).send('Server error'); }
+  } catch (error) { 
+    console.error('[Wappy Error] Avatar upload error:', error);
+    next(error); // NAYA: Error ko global handler par bhejo
+  }
 });
+// === END FIX ===
 
 app.post('/api/toggle-block', protectRoute, async (req, res) => {
   try {
@@ -444,7 +427,7 @@ app.post('/api/toggle-star', protectRoute, async (req, res) => {
 });
 
 // === Authentication Routes (SendGrid Waala Fix) ===
-app.post('/register', async (req, res, next) => { // NAYA: 'next' add kiya
+app.post('/register', async (req, res, next) => { 
   try {
     const { email, password } = req.body;
     console.log(`[Wappy Register] Checking if user exists: ${email}`);
@@ -453,24 +436,18 @@ app.post('/register', async (req, res, next) => { // NAYA: 'next' add kiya
       console.log(`[Wappy Register] Failed: User already exists: ${email}`);
       return res.status(400).send('User already exists'); 
     }
-    
     console.log(`[Wappy Register] Hashing password for ${email}`);
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    
     const newUser = new User({ email: email, password: hashedPassword, displayName: email.split('@')[0] });
-    
     console.log(`[Wappy Register] Saving new user ${email} to database...`);
     await newUser.save();
     console.log(`[Wappy Register] NEW USER REGISTERED: ${email}`);
-    
-    // Check 5: Welcome email bhejna (with SendGrid)
     try {
       console.log(`[Wappy Register] Sending welcome email to ${email} via SendGrid...`);
       const msg = {
         to: email, from: process.env.EMAIL_USER, subject: 'Welcome to Wappy! 🍉',
         text: `Welcome, ${email}! Thank you for joining Wappy. You can now login and start chatting with your friends.`,
-        // === NAYA: URL FIX (wappy-pro) ===
         html: `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;"><div style="background-color: #22c55e; color: white; padding: 20px; text-align: center;"><h1 style="margin: 0; font-size: 28px;">Welcome to Wappy! 🍉</h1></div><div style="padding: 30px;"><p style="font-size: 18px;">Hello ${email},</p><p>Thank you for joining Wappy. We're excited to have you on board!</p><p>You can now log in and start chatting with your friends and family.</p><a href="https://wappy-pro.onrender.com/login.html" style="background-color: #22c55e; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 20px; font-weight: bold;">Login to Your Account</a><p style="margin-top: 30px; font-size: 14px; color: #777;">If you did not sign up for this account, you can safely ignore this email.</p><hr style="border: 0; border-top: 1px solid #eee; margin-top: 20px;"><p style="font-size: 12px; color: #999; text-align: center;">&copy; ${new Date().getFullYear()} Wappy. All rights reserved.</p></div></div>`
       };
       await sgMail.send(msg);
@@ -482,11 +459,11 @@ app.post('/register', async (req, res, next) => { // NAYA: 'next' add kiya
     }
     res.redirect('/login.html');
   } catch (error) { 
-    next(error); // NAYA: Error ko global handler par bhejo
+    next(error); 
   }
 });
 
-app.post('/login', loginLimiter, async (req, res, next) => { // NAYA: 'next' add kiya
+app.post('/login', loginLimiter, async (req, res, next) => { 
   try {
     const { email, password } = req.body;
     const user = await User.findOne({ email: email }).lean();
@@ -494,26 +471,26 @@ app.post('/login', loginLimiter, async (req, res, next) => { // NAYA: 'next' add
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) { return res.status(400).send('Invalid email or password'); }
     const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '1h' });
-    res.cookie('token', token, { httpOnly: true, maxAge: 60 * 60 * 1000, secure: true, sameSite: 'Strict' }); // NAYA: Secure cookies
+    res.cookie('token', token, { httpOnly: true, maxAge: 60 * 60 * 1000, secure: true, sameSite: 'Strict' }); 
     console.log(`[Wappy] USER LOGGED IN: ${email}`);
     res.redirect('/chats.html');
   } catch (error) { 
-    next(error); // NAYA: Error ko global handler par bhejo
+    next(error); 
   }
 });
 
-app.post('/set-name', protectRoute, async (req, res, next) => { // NAYA: 'next' add kiya
+app.post('/set-name', protectRoute, async (req, res, next) => { 
   try {
     const { displayName } = req.body;
     await User.updateOne({ email: req.user.email }, { $set: { displayName: displayName } });
     console.log(`[Wappy] DISPLAY NAME SET for ${req.user.email}: ${displayName}`);
     res.redirect('/chats.html');
   } catch (error) { 
-    next(error); // NAYA: Error ko global handler par bhejo
+    next(error); 
   }
 });
 
-app.post('/add-friend', protectRoute, async (req, res, next) => { // NAYA: 'next' add kiya
+app.post('/add-friend', protectRoute, async (req, res, next) => { 
   try {
     const { friendEmail, nickname } = req.body;
     const ownerEmail = req.user.email;
@@ -527,7 +504,7 @@ app.post('/add-friend', protectRoute, async (req, res, next) => { // NAYA: 'next
     console.log(`[Wappy] NEW FRIEND added for ${ownerEmail}: ${friendEmail}`);
     res.redirect('/home.html');
   } catch (error) { 
-    next(error); // NAYA: Error ko global handler par bhejo
+    next(error); 
   }
 });
 
@@ -536,7 +513,7 @@ app.get('/logout', (req, res) => {
   res.redirect('/login.html');
 });
 
-app.post('/forgot-password', async (req, res, next) => { // NAYA: 'next' add kiya
+app.post('/forgot-password', async (req, res, next) => { 
   try {
     const { email } = req.body;
     const user = await User.findOne({ email: email }).lean();
@@ -545,27 +522,23 @@ app.post('/forgot-password', async (req, res, next) => { // NAYA: 'next' add kiy
       return res.send("If this email is registered, you will receive a reset link.");
     }
     const resetToken = jwt.sign({ email: user.email }, JWT_RESET_SECRET, { expiresIn: '10m' });
-    
-    // === NAYA: URL FIX (wappy-pro) & File Name Fix (reset-password.html) ===
+    // === NAYA: URL FIX (wappy-pro) ===
     const resetUrl = `https://wappy-pro.onrender.com/reset-password.html?token=${resetToken}`;
-    
     console.log(`[Wappy Forgot] Password reset link (SendGrid) sending to: ${email}`);
-    
     const msg = {
       to: email, from: process.env.EMAIL_USER, subject: "Your Wappy Password Reset Link",
       text: `Hello ${user.displayName || user.email}, Click the link below to reset your password. This link is valid for 10 minutes only. ${resetUrl}`,
       html: `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;"><div style="background-color: #f4b400; color: white; padding: 20px; text-align: center;"><h1 style="margin: 0; font-size: 28px;">Password Reset Request</h1></div><div style="padding: 30px;"><p style="font-size: 18px;">Hello ${user.displayName || user.email},</p><p>We received a request to reset your password for your Wappy account. You can reset your password by clicking the button below.</p><p><strong>This link is valid for 10 minutes only.</strong></p><a href="${resetUrl}" style="background-color: #f4b400; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 20px; font-weight: bold;">Reset Your Password</a><p style="margin-top: 30px; font-size: 14px; color: #777;">If you did not request this, please ignore this email. Your password will not be changed.</p></div></div>`
     };
     await sgMail.send(msg);
-    
     console.log(`[Wappy Forgot] Password reset link sent to: ${email}`);
     res.send("Password reset link has been sent to your email.");
   } catch (error) { 
-    next(error); // NAYA: Error ko global handler par bhejo
+    next(error);
   }
 });
 
-app.post('/reset-password', async (req, res, next) => { // NAYA: 'next' add kiya
+app.post('/reset-password', async (req, res, next) => {
   try {
     const { token } = req.query;
     const { password } = req.body;
@@ -579,7 +552,7 @@ app.post('/reset-password', async (req, res, next) => { // NAYA: 'next' add kiya
     console.log(`[Wappy] Password reset SUCCESS for: ${decoded.email}`);
     res.redirect('/login.html');
   } catch (error) { 
-    next(error); // NAYA: Error ko global handler par bhejo
+    next(error); 
   }
 });
 // === Socket.io Logic ===
@@ -748,7 +721,6 @@ io.on('connection', async (socket) => {
 });
 
 // === NAYA: PROFESSIONAL ERROR HANDLING ===
-
 // 404 Handler (File Not Found) - Ye hamesha baaki routes ke BAAD aana chahiye
 app.use((req, res, next) => {
   const error = new Error(`Not Found - ${req.originalUrl}`);
@@ -758,9 +730,8 @@ app.use((req, res, next) => {
 });
 
 // Global Error Handler (500 Server Error)
-// Ye saare errors ko pakdega (jaise DB crash, etc.)
 app.use((err, req, res, next) => {
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode; // Agar status code 200 hai, toh 500 set karo
+  const statusCode = res.statusCode === 200 ? 500 : res.statusCode; 
   res.status(statusCode);
   console.error('!!!!!!!!!!!!!!!!! GLOBAL ERROR CAUGHT !!!!!!!!!!!!!!!!!');
   console.error(`Error: ${err.message}`);
@@ -768,7 +739,7 @@ app.use((err, req, res, next) => {
   console.error('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
   res.json({
     message: err.message,
-    stack: process.env.NODE_ENV === 'production' ? '🥞' : err.stack, // Production mein poora error mat dikhao
+    stack: process.env.NODE_ENV === 'production' ? '🥞' : err.stack, 
   });
 });
 // === END ERROR HANDLING ===
@@ -776,7 +747,6 @@ app.use((err, req, res, next) => {
 // === Server ko Start Karna ===
 async function startServer() {
   server.listen(PORT, () => {
-    // NAYA: Professional server start log
     console.log('----------------------------------------------------');
     console.log(`🍉 Wappy server is UP and running!`);
     console.log(`📈 Listening on PORT: ${PORT}`);
