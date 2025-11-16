@@ -51,16 +51,7 @@ const storage = new CloudinaryStorage({
     }
   },
 });
-// === END NAYA STORAGE ===
 
-const storage = multer.diskStorage({
-  destination: 'public/uploads/avatars/',
-  filename: function (req, file, cb) {
-    const id = req.body.groupId || req.user.email;
-    const extension = path.extname(file.originalname);
-    cb(null, id + extension);
-  }
-});
 const upload = multer({ storage: storage });
 const MESSAGES_PER_PAGE = 20;
 
