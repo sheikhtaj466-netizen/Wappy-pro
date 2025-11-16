@@ -14,6 +14,8 @@ import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import mongoose from 'mongoose'; // MongoDB
 import { error } from 'console';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +24,12 @@ dotenv.config();
 
 // === NAYA: SendGrid API Key Setup ===
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// === NAYA: Cloudinary Config ===
+cloudinary.config({ 
+  cloud_name: process.env.CLOUD_NAME, 
+  api_key: process.env.CLOUDINARY_API_KEY, 
+  api_secret: process.env.CLOUDINARY_API_SECRET 
+});
 
 const app = express();
 
@@ -30,14 +38,21 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // === NAYA: RENDER PROXY FIX ===
-// 'express-rate-limit' error ke liye
-app.set('trust proxy', 1);
+// === NAYA: Cloudinary Storage Engine ===
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'wappy_avatars', // Cloudinary par folder ka naam
+    format: async (req, file) => 'png', // Sabko PNG format mein save karo
+    public_id: (req, file) => {
+      // File ka naam user ke email se set karo (taaki overwrite ho)
+      const id = req.body.groupId || req.user.email;
+      return id;
+    }
+  },
+});
+// === END NAYA STORAGE ===
 
-const server = http.createServer(app);
-const io = new Server(server);
-const JWT_SECRET = 'your-very-secret-key-12345';
-const JWT_RESET_SECRET = 'your-password-reset-key-67890';
-const connectedUsers = new Map();
 const storage = multer.diskStorage({
   destination: 'public/uploads/avatars/',
   filename: function (req, file, cb) {
@@ -354,7 +369,8 @@ app.get('/api/chats', protectRoute, async (req, res) => {
 app.post('/api/upload-avatar', protectRoute, upload.single('avatar'), async (req, res) => {
   try {
     if (!req.file) { return res.status(400).send('No file uploaded.'); }
-    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    const avatarUrl = req.file.path;
+    
     await User.updateOne({ email: req.user.email }, { $set: { avatarUrl: avatarUrl } });
     console.log(`[Wappy] Avatar updated for ${req.user.email}: ${avatarUrl}`);
     res.redirect('/profile.html');
