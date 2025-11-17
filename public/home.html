@@ -182,8 +182,9 @@
     </script>
 </body>
 </html>
-        // === NAYA JAVASCRIPT (KADAM 4.2) ===
+                // === NAYA JAVASCRIPT (FINAL - KADAM 4.2 CORRECTED) ===
         
+        // 1. Saare Elements Define Karna
         const socket = io();
         const contactsListDiv = document.getElementById('contacts-list');
         const loadingText = document.getElementById('loading-text');
@@ -199,9 +200,9 @@
         const addFriendFab = document.getElementById('add-friend-fab');
         const addFriendModal = document.getElementById('add-friend-modal');
         const closeModalBtn = document.getElementById('close-modal-btn');
-        const addFriendForm = document.getElementById('add-friend-form'); // NAYA
+        const addFriendForm = document.getElementById('add-friend-form');
         
-        // NAYA: "Friend Requests" Modal Elements
+        // "Friend Requests" Modal Elements
         const requestsBtn = document.getElementById('requests-btn');
         const requestsCount = document.getElementById('requests-count');
         const requestsModal = document.getElementById('requests-modal');
@@ -209,7 +210,8 @@
         const requestsList = document.getElementById('requests-list');
         const noRequestsText = document.getElementById('no-requests-text');
 
-        // === Toast Function (Same as before) ===
+        // 2. Helper Functions (Functions ko pehle define karna)
+        
         function showToast(message) {
             toast.textContent = message;
             toast.classList.remove('hidden');
@@ -220,46 +222,119 @@
             }, 3000);
         }
 
-        // === NAYA: Socket Listeners ===
+        // TogglePin function ko createContactCard se pehle define karna zaroori hai
+        async function togglePin(event) {
+            // Button par click ko aage link tak jaane se roko
+            event.preventDefault(); 
+            event.stopPropagation();
+            
+            const button = event.currentTarget;
+            const friendEmail = button.dataset.email;
+            try {
+                const response = await fetch('/api/toggle-pin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ friendEmail: friendEmail })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showToast(result.message);
+                    loadContacts(searchInput.value); // List ko refresh karo
+                } else { showToast(`Error: ${result.message}`); }
+            } catch (error) { showToast('Server error while pinning chat.'); }
+        }
 
-        // 1. NAYA: Jab koi hamein FRIEND REQUEST BHEJTA hai
-        socket.on('new_friend_request', (request) => {
-            console.log('Nayi friend request aayi:', request);
-            showToast(`${request.displayName} sent you a friend request!`);
-            // Bell icon par count update karo
-            updateRequestCount(1);
-        });
-
-        // 2. NAYA: Jab koi hamari request ACCEPT KARTA hai
-        socket.on('request_accepted', (newContact) => {
-            console.log('Hamari request accept ho gayi:', newContact);
-            showToast(`${newContact.nickname} accepted your friend request!`);
-            // Contact list ko refresh karo taaki naya dost dikhe
-            loadContacts();
-        });
-        
-        // 3. Status update (Same as before)
-        socket.on('friend status', (data) => {
-            const statusDiv = document.getElementById(`status-${data.email}`);
-            if (statusDiv) {
-                const dot = statusDiv.querySelector('span:first-child');
-                const text = statusDiv.querySelector('span:last-child');
-                if (data.status === 'Online') {
-                    dot.className = 'h-3 w-3 rounded-full bg-green-500';
-                    text.className = 'text-sm text-green-600';
-                    text.textContent = 'Online';
-                } else {
-                    dot.className = 'h-3 w-3 rounded-full bg-gray-400';
-                    text.className = 'text-sm text-gray-500 dark:text-gray-400';
-                    text.textContent = 'Offline';
-                }
+        // createContactCard function ko renderContact se pehle define karna
+        function createContactCard(contact) {
+            const contactEl = document.createElement('div');
+            contactEl.className = `flex items-center p-4 dark:border-gray-700 no-underline ${contact.isPinned ? 'pinned dark:pinned' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`;
+            const avatarSrc = contact.avatarUrl ? contact.avatarUrl : `https://ui-avatars.com/api/?name=${contact.nickname.charAt(0)}&background=random&size=64`;
+            
+            contactEl.innerHTML = `
+                <a href="/chat.html?id=${contact.friendEmail}" class="flex-1 flex items-center no-underline">
+                    <img src="${avatarSrc}" alt="Avatar" class="w-12 h-12 rounded-full object-cover mr-4">
+                    <div class="flex-1">
+                        <span class="text-lg text-gray-800 dark:text-white font-medium">${contact.nickname}</span>
+                        <div id="status-${contact.friendEmail}" class="flex items-center space-x-2">
+                            <span class="h-3 w-3 rounded-full ${contact.status === 'Online' ? 'bg-green-500' : 'bg-gray-400'}"></span>
+                            <span class="text-sm ${contact.status === 'Online' ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}">
+                                ${contact.status || 'Offline'}
+                            </span>
+                        </div>
+                    </div>
+                </a>
+                <button class="pin-btn p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600" data-email="${contact.friendEmail}" data-pinned="${contact.isPinned}">
+                    <span class="text-xl">${contact.isPinned ? '📌' : '📍'}</span>
+                </button>
+            `;
+            
+            const pinBtn = contactEl.querySelector('.pin-btn');
+            if (pinBtn) { 
+                pinBtn.addEventListener('click', togglePin); // Ab togglePin defined hai
             }
-        });
-        // === END Socket Listeners ===
+            return contactEl;
+        }
 
+        function renderContact(contact) {
+            const contactEl = createContactCard(contact); // Ab createContactCard defined hai
+            contactsListDiv.appendChild(contactEl);
+        }
+        
+        // Bell icon par count update karna
+        function updateRequestCount(count) {
+            if (count > 0) {
+                requestsCount.textContent = count;
+                requestsCount.classList.remove('hidden');
+            } else {
+                requestsCount.classList.add('hidden');
+            }
+        }
+        
+        // Accept/Decline button ki request bhejna
+        async function handleRequestAction(event) {
+            const button = event.target;
+            // Sirf 'accept-btn' ya 'decline-btn' par hi chalao
+            const action = button.classList.contains('accept-btn') ? 'accept' : (button.classList.contains('decline-btn') ? 'decline' : null);
+            if (!action) return; 
 
-        // === Contact List Functions (Mutual Add waale) ===
-        // (Ye code zaroori hai taaki list load ho)
+            const requestEl = button.closest('[data-request-id]');
+            const requestId = requestEl.dataset.requestId;
+            
+            button.disabled = true; // Button ko disable karo
+            button.textContent = '...';
+
+            try {
+                const response = await fetch(`/api/friend-requests/${action}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requestId: requestId })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showToast(result.message);
+                    requestEl.remove(); // UI se request hatao
+                    
+                    const remainingRequests = requestsList.querySelectorAll('[data-request-id]');
+                    if (remainingRequests.length === 0) {
+                        requestsList.appendChild(noRequestsText);
+                    }
+                    updateRequestCount(remainingRequests.length);
+
+                    if (action === 'accept') {
+                        loadContacts(); // Naye dost ko list mein add karne ke liye refresh karo
+                    }
+                } else {
+                    showToast(`Error: ${result.message}`);
+                    button.disabled = false; // Error par button waapas enable karo
+                }
+            } catch (error) {
+                showToast('Server error while responding.');
+                button.disabled = false;
+            }
+        }
+        
+        // 3. Main Functions (Data Load Karne Waale)
+
         async function loadContacts(searchQuery = '') {
             loadingText.style.display = 'none';
             skeletonLoader.style.display = 'block'; 
@@ -279,13 +354,13 @@
 
                 if (contacts.length === 0) {
                     if (searchQuery) { contactsListDiv.innerHTML = `<p class="text-gray-500 dark:text-gray-400 p-6">No contacts found matching "${searchQuery}".</p>`; } 
-                    else { contactsListDiv.innerHTML = '<p class="text-gray-500 dark:text-gray-400 p-6">No contacts yet. Tap + to send a request.</p>'; } // Text update
+                    else { contactsListDiv.innerHTML = '<p class="text-gray-500 dark:text-gray-400 p-6">No contacts yet. Tap + to send a request.</p>'; }
                     return;
                 }
-                contacts.forEach(renderContact);
-                document.querySelectorAll('.pin-btn').forEach(button => {
-                    button.addEventListener('click', togglePin);
-                });
+                contacts.forEach(renderContact); // Ab 'renderContact' defined hai
+                
+                // Pin button listeners ko yahan se hata diya, kyunki 'createContactCard' mein add ho gaya hai
+
             } catch (error) {
                 console.error('Error loading contacts:', error);
                 skeletonLoader.style.display = 'none';
@@ -293,88 +368,24 @@
             }
         }
         
-        function createContactCard(contact) {
-            const contactEl = document.createElement('div');
-            contactEl.className = `flex items-center p-4 dark:border-gray-700 no-underline ${contact.isPinned ? 'pinned dark:pinned' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`;
-            const avatarSrc = contact.avatarUrl ? contact.avatarUrl : `https://ui-avatars.com/api/?name=${contact.nickname.charAt(0)}&background=random&size=64`;
-            contactEl.innerHTML = `
-                <a href="/chat.html?id=${contact.friendEmail}" class="flex-1 flex items-center no-underline">
-                    <img src="${avatarSrc}" alt="Avatar" class="w-12 h-12 rounded-full object-cover mr-4">
-                    <div class="flex-1">
-                        <span class="text-lg text-gray-800 dark:text-white font-medium">${contact.nickname}</span>
-                        <div id="status-${contact.friendEmail}" class="flex items-center space-x-2">
-                            <span class="h-3 w-3 rounded-full ${contact.status === 'Online' ? 'bg-green-500' : 'bg-gray-400'}"></span>
-                            <span class="text-sm ${contact.status === 'Online' ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}">
-                                ${contact.status || 'Offline'}
-                            </span>
-                        </div>
-                    </div>
-                </a>
-                <button class="pin-btn p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600" data-email="${contact.friendEmail}" data-pinned="${contact.isPinned}">
-                    <span class="text-xl">${contact.isPinned ? '📌' : '📍'}</span>
-                </button>
-            `;
-            const pinBtn = contactEl.querySelector('.pin-btn');
-            if (pinBtn) { pinBtn.addEventListener('click', togglePin); }
-            return contactEl;
-        }
-
-        function renderContact(contact) {
-            const contactEl = createContactCard(contact);
-            contactsListDiv.appendChild(contactEl);
-        }
-        
-        async function togglePin(event) {
-            const button = event.currentTarget;
-            const friendEmail = button.dataset.email;
-            try {
-                const response = await fetch('/api/toggle-pin', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ friendEmail: friendEmail })
-                });
-                const result = await response.json();
-                if (response.ok) {
-                    showToast(result.message);
-                    loadContacts(searchInput.value);
-                } else { showToast(`Error: ${result.message}`); }
-            } catch (error) { showToast('Server error while pinning chat.'); }
-        }
-        
-        // === NAYA: Friend Request Functions ===
-        
-        // Bell icon par count update karna
-        function updateRequestCount(count) {
-            if (count > 0) {
-                requestsCount.textContent = count;
-                requestsCount.classList.remove('hidden');
-            } else {
-                requestsCount.classList.add('hidden');
-            }
-        }
-        
-        // Pending requests ko fetch aur render karna
         async function loadFriendRequests() {
             try {
                 requestsList.innerHTML = '<p class="text-gray-500 dark:text-gray-400 p-4 text-center">Loading requests...</p>';
                 const response = await fetch('/api/friend-requests');
-                if (!response.ok) {
-                    throw new Error('Failed to fetch requests');
-                }
+                if (!response.ok) { throw new Error('Failed to fetch requests'); }
                 const requests = await response.json();
                 
-                requestsList.innerHTML = ''; // List ko khaali karo
+                requestsList.innerHTML = ''; 
                 
                 if (requests.length === 0) {
                     requestsList.appendChild(noRequestsText);
-                    updateRequestCount(0); // Count ko 0 karo
+                    updateRequestCount(0);
                 } else {
-                    updateRequestCount(requests.length); // Count update karo
+                    updateRequestCount(requests.length);
                     requests.forEach(request => {
                         const reqEl = document.createElement('div');
                         reqEl.className = 'flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700';
-                        reqEl.dataset.requestId = request._id; // ID save karo
-                        
+                        reqEl.dataset.requestId = request._id;
                         const avatarSrc = request.avatarUrl ? request.avatarUrl : `https://ui-avatars.com/api/?name=${request.displayName.charAt(0)}&background=random&size=40`;
                         
                         reqEl.innerHTML = `
@@ -396,78 +407,70 @@
             }
         }
         
-        // Accept/Decline button ki request bhejna
-        async function handleRequestAction(event) {
-            const button = event.target;
-            const action = button.classList.contains('accept-btn') ? 'accept' : 'decline';
-            if (!action) return; // Agar div par click hua toh ignore karo
+        // 4. Socket Listeners
 
-            const requestEl = button.closest('[data-request-id]');
-            const requestId = requestEl.dataset.requestId;
-            
-            try {
-                const response = await fetch(`/api/friend-requests/${action}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ requestId: requestId })
-                });
-                const result = await response.json();
-                if (response.ok) {
-                    showToast(result.message);
-                    // UI se us request ko hata do
-                    requestEl.remove();
-                    // List ko phir se check karo
-                    const remainingRequests = requestsList.querySelectorAll('[data-request-id]');
-                    if (remainingRequests.length === 0) {
-                        requestsList.appendChild(noRequestsText);
-                    }
-                    updateRequestCount(remainingRequests.length);
-
-                    // Agar accept kiya hai, toh contact list refresh karo
-                    if (action === 'accept') {
-                        loadContacts();
-                    }
-                } else {
-                    showToast(`Error: ${result.message}`);
-                }
-            } catch (error) {
-                showToast('Server error while responding.');
-            }
-        }
-        
-        // === Event Listeners ===
-        
-        window.addEventListener('DOMContentLoaded', () => {
-            loadContacts();
-            loadFriendRequests(); // NAYA: Page load par requests bhi check karo
+        socket.on('new_friend_request', (request) => {
+            console.log('Nayi friend request aayi:', request);
+            showToast(`${request.displayName} sent you a friend request!`);
+            updateRequestCount(requestsCount.textContent + 1);
         });
 
-        // Menu (Same as before)
+        socket.on('request_accepted', (newContact) => {
+            console.log('Hamari request accept ho gayi:', newContact);
+            showToast(`${newContact.nickname} accepted your friend request!`);
+            loadContacts();
+        });
+        
+        socket.on('friend status', (data) => {
+            const statusDiv = document.getElementById(`status-${data.email}`);
+            if (statusDiv) {
+                const dot = statusDiv.querySelector('span:first-child');
+                const text = statusDiv.querySelector('span:last-child');
+                if (data.status === 'Online') {
+                    dot.className = 'h-3 w-3 rounded-full bg-green-500';
+                    text.className = 'text-sm text-green-600';
+                    text.textContent = 'Online';
+                } else {
+                    dot.className = 'h-3 w-3 rounded-full bg-gray-400';
+                    text.className = 'text-sm text-gray-500 dark:text-gray-400';
+                    text.textContent = 'Offline';
+                }
+            }
+        });
+        
+        // 5. Page Load aur Event Listeners
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadContacts();
+            loadFriendRequests(); 
+        });
+
         menuBtn.addEventListener('click', () => {
             menuDropdown.style.display = (menuDropdown.style.display === 'block') ? 'none' : 'block';
         });
+        
         window.addEventListener('click', (e) => {
             if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target) && !requestsBtn.contains(e.target) && !requestsModal.contains(e.target)) {
                 menuDropdown.style.display = 'none';
             }
         });
         
-        // "Add Friend" Modal Listeners
         addFriendFab.addEventListener('click', () => {
             addFriendModal.classList.remove('hidden');
         });
+        
         closeModalBtn.addEventListener('click', () => {
             addFriendModal.classList.add('hidden');
         });
+        
         addFriendModal.addEventListener('click', (e) => {
             if (e.target === addFriendModal) {
                 addFriendModal.classList.add('hidden');
             }
         });
 
-        // NAYA: "Add Friend" Form ka Fetch Logic
         addFriendForm.addEventListener('submit', async (e) => {
-            e.preventDefault(); // Page reload ko roko
+            e.preventDefault(); 
             const email = document.getElementById('friendEmail').value;
             const button = addFriendForm.querySelector('button[type="submit"]');
             
@@ -497,24 +500,23 @@
             }
         });
 
-        // NAYA: "Friend Requests" Modal Listeners
         requestsBtn.addEventListener('click', () => {
             requestsModal.classList.remove('hidden');
-            loadFriendRequests(); // Modal kholne par hamesha refresh karo
+            loadFriendRequests(); 
         });
+        
         closeRequestsModalBtn.addEventListener('click', () => {
             requestsModal.classList.add('hidden');
         });
+        
         requestsModal.addEventListener('click', (e) => {
             if (e.target === requestsModal) {
                 requestsModal.classList.add('hidden');
             }
         });
-        // NAYA: Accept/Decline button listener (Event Delegation)
+        
         requestsList.addEventListener('click', handleRequestAction);
 
-
-        // Search (Same as before)
         searchInput.addEventListener('input', (e) => {
             clearTimeout(searchDebounceTimer);
             const query = e.target.value;
