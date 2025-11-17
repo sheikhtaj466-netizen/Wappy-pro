@@ -55,6 +55,27 @@
         .hidden {
             display: none;
         }
+        
+        /* === NAYA CSS: Notification Badge === */
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background-color: red;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            border: 2px solid white;
+        }
+        .dark .notification-badge {
+            border-color: #121212;
+        }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900">
@@ -66,6 +87,11 @@
                 <a href="/profile.html">
                     <img id="header-avatar" src="placeholder.jpg" class="w-8 h-8 rounded-full object-cover border-2 border-white dark:border-gray-400">
                 </a>
+                
+                <button id="requests-btn" class="p-2 rounded-full hover:bg-green-700 dark:hover:bg-gray-700 relative">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-1.707 1.707A1 1 0 003 14h14a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"></path></svg>
+                    <span id="requests-count" class="notification-badge hidden">0</span>
+                </button>
                 <div class="dropdown">
                     <button id="menu-btn" class="p-2 rounded-full hover:bg-green-700 dark:hover:bg-gray-700">
                         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path></svg>
@@ -127,14 +153,10 @@
                 <h2 class="text-2xl font-bold text-gray-800 dark:text-white">Add a Friend</h2>
                 <button id="close-modal-btn" class="text-2xl text-gray-500 dark:text-gray-400">&times;</button>
             </div>
-            <form action="/add-friend" method="POST">
+            <form id="add-friend-form">
                 <div class="mb-4">
                     <label for="friendEmail" class="block text-gray-700 dark:text-gray-300 mb-2">Friend's Email (Gmail)</label>
                     <input type="email" id="friendEmail" name="friendEmail" class="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" required>
-                </div>
-                <div class="mb-4">
-                    <label for="nickname" class="block text-gray-700 dark:text-gray-300 mb-2">Nickname (Optional)</label>
-                    <input type="text" id="nickname" name="nickname" class="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600">
                 </div>
                 <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">
                     Send Request
@@ -142,9 +164,26 @@
             </form>
         </div>
     </div>
-
+    <div id="requests-modal" class="modal-overlay hidden">
+        <div class="modal-box bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md max-h-[70vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
+                <h2 class="text-2xl font-bold text-gray-800 dark:text-white">Friend Requests</h2>
+                <button id="close-requests-modal-btn" class="text-2xl text-gray-500 dark:text-gray-400">&times;</button>
+            </div>
+            <div id="requests-list" class="flex-1 overflow-y-auto space-y-3">
+                <p id="no-requests-text" class="text-gray-500 dark:text-gray-400 p-4 text-center">You have no pending friend requests.</p>
+            </div>
+        </div>
+    </div>
     <div id="toast" class="hidden fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg transition-opacity duration-300 z-30"></div>
+    
     <script>
+        // Yahan Part 2 paste karna
+    </script>
+</body>
+</html>
+        // === NAYA JAVASCRIPT (KADAM 4.2) ===
+        
         const socket = io();
         const contactsListDiv = document.getElementById('contacts-list');
         const loadingText = document.getElementById('loading-text');
@@ -154,11 +193,23 @@
         const menuBtn = document.getElementById('menu-btn');
         const menuDropdown = document.getElementById('menu-dropdown');
         const searchInput = document.getElementById('search-contacts');
+        let searchDebounceTimer;
+
+        // "Add Friend" Modal Elements
         const addFriendFab = document.getElementById('add-friend-fab');
         const addFriendModal = document.getElementById('add-friend-modal');
         const closeModalBtn = document.getElementById('close-modal-btn');
-        let searchDebounceTimer;
+        const addFriendForm = document.getElementById('add-friend-form'); // NAYA
+        
+        // NAYA: "Friend Requests" Modal Elements
+        const requestsBtn = document.getElementById('requests-btn');
+        const requestsCount = document.getElementById('requests-count');
+        const requestsModal = document.getElementById('requests-modal');
+        const closeRequestsModalBtn = document.getElementById('close-requests-modal-btn');
+        const requestsList = document.getElementById('requests-list');
+        const noRequestsText = document.getElementById('no-requests-text');
 
+        // === Toast Function (Same as before) ===
         function showToast(message) {
             toast.textContent = message;
             toast.classList.remove('hidden');
@@ -168,167 +219,26 @@
                 toast.classList.add('hidden');
             }, 3000);
         }
-        // === NAYA: Real-time notification jab koi aapko add kare ===
-socket.on('new contact added', (newContact) => {
-    console.log('Naya contact add hua hai:', newContact);
-    
-    // 1. Ek naya contact card banao
-    const contactCard = createContactCard(newContact);
-    
-    // 2. Us card ko contact list mein sabse upar daalo
-    // (Skeleton loader ko hata kar, agar woh hai toh)
-    const skeleton = document.getElementById('skeleton-loader');
-    if (skeleton) {
-        skeleton.remove();
-    }
-    
-    // Naye contact ko list mein sabse upar (top) par add karo
-    contactsListDiv.prepend(contactCard);
-    
-    // 3. User ko notification dikhao
-    showToast(`${newContact.nickname} has added you to their contacts!`);
-});
 
-        async function loadContacts(searchQuery = '') {
-            loadingText.style.display = 'none';
-            skeletonLoader.style.display = 'block'; 
+        // === NAYA: Socket Listeners ===
 
-            try {
-                if (!searchQuery) {
-                    const meResponse = await fetch('/api/me');
-                    const me = await meResponse.json();
-                    if (me.avatarUrl) {
-                        headerAvatar.src = me.avatarUrl;
-                    } else {
-                        headerAvatar.src = `https://ui-avatars.com/api/?name=${me.displayName.charAt(0)}&background=random&size=32`;
-                    }
-                }
-
-                const response = await fetch(`/api/contacts?q=${searchQuery}`);
-                const contacts = await response.json();
-                
-                skeletonLoader.style.display = 'none'; 
-                contactsListDiv.innerHTML = ''; 
-
-                if (contacts.length === 0) {
-                    if (searchQuery) {
-                        contactsListDiv.innerHTML = `<p class="text-gray-500 dark:text-gray-400 p-6">No contacts found matching "${searchQuery}".</p>`;
-                    } else {
-                        contactsListDiv.innerHTML = '<p class="text-gray-500 dark:text-gray-400 p-6">No contacts yet. Tap + to add a friend.</p>';
-                    }
-                    return;
-                }
-                
-                contacts.forEach(renderContact);
-                
-                document.querySelectorAll('.pin-btn').forEach(button => {
-                    button.addEventListener('click', togglePin);
-                });
-
-            } catch (error) {
-                console.error('Error loading contacts:', error);
-                skeletonLoader.style.display = 'none';
-                contactsListDiv.innerHTML = '<p class="text-red-500 dark:text-red-400 p-6">Could not load contacts.</p>';
-            }
-        }
-        // === NAYA: Kadam 2 - createContactCard Function ===
-// (Ye function aapke renderContact code se banaya gaya hai)
-
-function createContactCard(contact) {
-    const contactEl = document.createElement('div');
-    // Class list se 'border-b' hata diya taaki links clear lagein
-    contactEl.className = `flex items-center p-4 dark:border-gray-700 no-underline ${contact.isPinned ? 'pinned dark:pinned' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`;
-    
-    const avatarSrc = contact.avatarUrl 
-        ? contact.avatarUrl 
-        : `https://ui-avatars.com/api/?name=${contact.nickname.charAt(0)}&background=random&size=64`;
-
-    contactEl.innerHTML = `
-        <a href="/chat.html?id=${contact.friendEmail}" class="flex-1 flex items-center no-underline">
-            <img src="${avatarSrc}" alt="Avatar" class="w-12 h-12 rounded-full object-cover mr-4">
-            <div class="flex-1">
-                <span class="text-lg text-gray-800 dark:text-white font-medium">${contact.nickname}</span>
-                <div id="status-${contact.friendEmail}" class="flex items-center space-x-2">
-                    <span class_name="h-3 w-3 rounded-full ${contact.status === 'Online' ? 'bg-green-500' : 'bg-gray-400'}"></span>
-                    <span class="text-sm ${contact.status === 'Online' ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}">
-                        ${contact.status || 'Offline'}
-                    </span>
-                </div>
-            </div>
-        </a>
-        <button class="pin-btn p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600" data-email="${contact.friendEmail}" data-pinned="${contact.isPinned}">
-            <span class="text-xl">${contact.isPinned ? '📌' : '📍'}</span>
-        </button>
-    `;
-    
-    // Naya event listener add karo taaki pin button kaam kare
-    const pinBtn = contactEl.querySelector('.pin-btn');
-    if (pinBtn) {
-        // 'togglePin' function aapki file mein pehle se hona chahiye
-        pinBtn.addEventListener('click', togglePin); 
-    }
-
-    return contactEl; // Sabse zaroori: Element ko return karo
-}
-
-        // === NAYA: Kadam 3 - Updated renderContact Function ===
-function renderContact(contact) {
-    const contactEl = createContactCard(contact); // Naya function call karo
-    contactsListDiv.appendChild(contactEl);
-}
-        
-        async function togglePin(event) {
-            const button = event.currentTarget;
-            const friendEmail = button.dataset.email;
-            try {
-                const response = await fetch('/api/toggle-pin', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ friendEmail: friendEmail })
-                });
-                const result = await response.json();
-                if (response.ok) {
-                    showToast(result.message);
-                    loadContacts(searchInput.value);
-                } else {
-                    showToast(`Error: ${result.message}`);
-                }
-            } catch (error) {
-                showToast('Server error while pinning chat.');
-            }
-        }
-        
-        window.addEventListener('DOMContentLoaded', () => loadContacts());
-
-        menuBtn.addEventListener('click', () => {
-            menuDropdown.style.display = (menuDropdown.style.display === 'block') ? 'none' : 'block';
+        // 1. NAYA: Jab koi hamein FRIEND REQUEST BHEJTA hai
+        socket.on('new_friend_request', (request) => {
+            console.log('Nayi friend request aayi:', request);
+            showToast(`${request.displayName} sent you a friend request!`);
+            // Bell icon par count update karo
+            updateRequestCount(1);
         });
-        window.addEventListener('click', (e) => {
-            if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target)) {
-                menuDropdown.style.display = 'none';
-            }
+
+        // 2. NAYA: Jab koi hamari request ACCEPT KARTA hai
+        socket.on('request_accepted', (newContact) => {
+            console.log('Hamari request accept ho gayi:', newContact);
+            showToast(`${newContact.nickname} accepted your friend request!`);
+            // Contact list ko refresh karo taaki naya dost dikhe
+            loadContacts();
         });
         
-        addFriendFab.addEventListener('click', () => {
-            addFriendModal.classList.remove('hidden');
-        });
-        closeModalBtn.addEventListener('click', () => {
-            addFriendModal.classList.add('hidden');
-        });
-        addFriendModal.addEventListener('click', (e) => {
-            if (e.target === addFriendModal) {
-                addFriendModal.classList.add('hidden');
-            }
-        });
-
-        searchInput.addEventListener('input', (e) => {
-            clearTimeout(searchDebounceTimer);
-            const query = e.target.value;
-            searchDebounceTimer = setTimeout(() => {
-                loadContacts(query);
-            }, 300);
-        });
-
+        // 3. Status update (Same as before)
         socket.on('friend status', (data) => {
             const statusDiv = document.getElementById(`status-${data.email}`);
             if (statusDiv) {
@@ -345,6 +255,270 @@ function renderContact(contact) {
                 }
             }
         });
-    </script>
-</body>
-</html>
+        // === END Socket Listeners ===
+
+
+        // === Contact List Functions (Mutual Add waale) ===
+        // (Ye code zaroori hai taaki list load ho)
+        async function loadContacts(searchQuery = '') {
+            loadingText.style.display = 'none';
+            skeletonLoader.style.display = 'block'; 
+            try {
+                if (!searchQuery) {
+                    const meResponse = await fetch('/api/me');
+                    const me = await meResponse.json();
+                    if (me.avatarUrl) { headerAvatar.src = me.avatarUrl; } 
+                    else { headerAvatar.src = `https://ui-avatars.com/api/?name=${me.displayName.charAt(0)}&background=random&size=32`; }
+                }
+
+                const response = await fetch(`/api/contacts?q=${searchQuery}`);
+                const contacts = await response.json();
+                
+                skeletonLoader.style.display = 'none'; 
+                contactsListDiv.innerHTML = ''; 
+
+                if (contacts.length === 0) {
+                    if (searchQuery) { contactsListDiv.innerHTML = `<p class="text-gray-500 dark:text-gray-400 p-6">No contacts found matching "${searchQuery}".</p>`; } 
+                    else { contactsListDiv.innerHTML = '<p class="text-gray-500 dark:text-gray-400 p-6">No contacts yet. Tap + to send a request.</p>'; } // Text update
+                    return;
+                }
+                contacts.forEach(renderContact);
+                document.querySelectorAll('.pin-btn').forEach(button => {
+                    button.addEventListener('click', togglePin);
+                });
+            } catch (error) {
+                console.error('Error loading contacts:', error);
+                skeletonLoader.style.display = 'none';
+                contactsListDiv.innerHTML = '<p class="text-red-500 dark:text-red-400 p-6">Could not load contacts.</p>';
+            }
+        }
+        
+        function createContactCard(contact) {
+            const contactEl = document.createElement('div');
+            contactEl.className = `flex items-center p-4 dark:border-gray-700 no-underline ${contact.isPinned ? 'pinned dark:pinned' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`;
+            const avatarSrc = contact.avatarUrl ? contact.avatarUrl : `https://ui-avatars.com/api/?name=${contact.nickname.charAt(0)}&background=random&size=64`;
+            contactEl.innerHTML = `
+                <a href="/chat.html?id=${contact.friendEmail}" class="flex-1 flex items-center no-underline">
+                    <img src="${avatarSrc}" alt="Avatar" class="w-12 h-12 rounded-full object-cover mr-4">
+                    <div class="flex-1">
+                        <span class="text-lg text-gray-800 dark:text-white font-medium">${contact.nickname}</span>
+                        <div id="status-${contact.friendEmail}" class="flex items-center space-x-2">
+                            <span class="h-3 w-3 rounded-full ${contact.status === 'Online' ? 'bg-green-500' : 'bg-gray-400'}"></span>
+                            <span class="text-sm ${contact.status === 'Online' ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}">
+                                ${contact.status || 'Offline'}
+                            </span>
+                        </div>
+                    </div>
+                </a>
+                <button class="pin-btn p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600" data-email="${contact.friendEmail}" data-pinned="${contact.isPinned}">
+                    <span class="text-xl">${contact.isPinned ? '📌' : '📍'}</span>
+                </button>
+            `;
+            const pinBtn = contactEl.querySelector('.pin-btn');
+            if (pinBtn) { pinBtn.addEventListener('click', togglePin); }
+            return contactEl;
+        }
+
+        function renderContact(contact) {
+            const contactEl = createContactCard(contact);
+            contactsListDiv.appendChild(contactEl);
+        }
+        
+        async function togglePin(event) {
+            const button = event.currentTarget;
+            const friendEmail = button.dataset.email;
+            try {
+                const response = await fetch('/api/toggle-pin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ friendEmail: friendEmail })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showToast(result.message);
+                    loadContacts(searchInput.value);
+                } else { showToast(`Error: ${result.message}`); }
+            } catch (error) { showToast('Server error while pinning chat.'); }
+        }
+        
+        // === NAYA: Friend Request Functions ===
+        
+        // Bell icon par count update karna
+        function updateRequestCount(count) {
+            if (count > 0) {
+                requestsCount.textContent = count;
+                requestsCount.classList.remove('hidden');
+            } else {
+                requestsCount.classList.add('hidden');
+            }
+        }
+        
+        // Pending requests ko fetch aur render karna
+        async function loadFriendRequests() {
+            try {
+                requestsList.innerHTML = '<p class="text-gray-500 dark:text-gray-400 p-4 text-center">Loading requests...</p>';
+                const response = await fetch('/api/friend-requests');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch requests');
+                }
+                const requests = await response.json();
+                
+                requestsList.innerHTML = ''; // List ko khaali karo
+                
+                if (requests.length === 0) {
+                    requestsList.appendChild(noRequestsText);
+                    updateRequestCount(0); // Count ko 0 karo
+                } else {
+                    updateRequestCount(requests.length); // Count update karo
+                    requests.forEach(request => {
+                        const reqEl = document.createElement('div');
+                        reqEl.className = 'flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700';
+                        reqEl.dataset.requestId = request._id; // ID save karo
+                        
+                        const avatarSrc = request.avatarUrl ? request.avatarUrl : `https://ui-avatars.com/api/?name=${request.displayName.charAt(0)}&background=random&size=40`;
+                        
+                        reqEl.innerHTML = `
+                            <div class="flex items-center">
+                                <img src="${avatarSrc}" class="w-10 h-10 rounded-full object-cover mr-3">
+                                <span class="font-semibold text-gray-800 dark:text-white">${request.displayName}</span>
+                            </div>
+                            <div class="space-x-2 flex-shrink-0">
+                                <button class="accept-btn bg-green-500 text-white px-3 py-1 rounded-lg text-sm font-bold">Accept</button>
+                                <button class="decline-btn bg-gray-500 text-white px-3 py-1 rounded-lg text-sm font-bold">Decline</button>
+                            </div>
+                        `;
+                        requestsList.appendChild(reqEl);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading requests:', error);
+                requestsList.innerHTML = '<p class="text-red-500 dark:text-red-400 p-4 text-center">Could not load requests.</p>';
+            }
+        }
+        
+        // Accept/Decline button ki request bhejna
+        async function handleRequestAction(event) {
+            const button = event.target;
+            const action = button.classList.contains('accept-btn') ? 'accept' : 'decline';
+            if (!action) return; // Agar div par click hua toh ignore karo
+
+            const requestEl = button.closest('[data-request-id]');
+            const requestId = requestEl.dataset.requestId;
+            
+            try {
+                const response = await fetch(`/api/friend-requests/${action}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requestId: requestId })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showToast(result.message);
+                    // UI se us request ko hata do
+                    requestEl.remove();
+                    // List ko phir se check karo
+                    const remainingRequests = requestsList.querySelectorAll('[data-request-id]');
+                    if (remainingRequests.length === 0) {
+                        requestsList.appendChild(noRequestsText);
+                    }
+                    updateRequestCount(remainingRequests.length);
+
+                    // Agar accept kiya hai, toh contact list refresh karo
+                    if (action === 'accept') {
+                        loadContacts();
+                    }
+                } else {
+                    showToast(`Error: ${result.message}`);
+                }
+            } catch (error) {
+                showToast('Server error while responding.');
+            }
+        }
+        
+        // === Event Listeners ===
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            loadContacts();
+            loadFriendRequests(); // NAYA: Page load par requests bhi check karo
+        });
+
+        // Menu (Same as before)
+        menuBtn.addEventListener('click', () => {
+            menuDropdown.style.display = (menuDropdown.style.display === 'block') ? 'none' : 'block';
+        });
+        window.addEventListener('click', (e) => {
+            if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target) && !requestsBtn.contains(e.target) && !requestsModal.contains(e.target)) {
+                menuDropdown.style.display = 'none';
+            }
+        });
+        
+        // "Add Friend" Modal Listeners
+        addFriendFab.addEventListener('click', () => {
+            addFriendModal.classList.remove('hidden');
+        });
+        closeModalBtn.addEventListener('click', () => {
+            addFriendModal.classList.add('hidden');
+        });
+        addFriendModal.addEventListener('click', (e) => {
+            if (e.target === addFriendModal) {
+                addFriendModal.classList.add('hidden');
+            }
+        });
+
+        // NAYA: "Add Friend" Form ka Fetch Logic
+        addFriendForm.addEventListener('submit', async (e) => {
+            e.preventDefault(); // Page reload ko roko
+            const email = document.getElementById('friendEmail').value;
+            const button = addFriendForm.querySelector('button[type="submit"]');
+            
+            button.disabled = true;
+            button.textContent = 'Sending...';
+
+            try {
+                const response = await fetch('/add-friend', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ friendEmail: email })
+                });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showToast(result.message);
+                    addFriendModal.classList.add('hidden');
+                    addFriendForm.reset();
+                } else {
+                    showToast(`Error: ${result.message}`);
+                }
+            } catch (error) {
+                showToast('Server error. Could not send request.');
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Send Request';
+            }
+        });
+
+        // NAYA: "Friend Requests" Modal Listeners
+        requestsBtn.addEventListener('click', () => {
+            requestsModal.classList.remove('hidden');
+            loadFriendRequests(); // Modal kholne par hamesha refresh karo
+        });
+        closeRequestsModalBtn.addEventListener('click', () => {
+            requestsModal.classList.add('hidden');
+        });
+        requestsModal.addEventListener('click', (e) => {
+            if (e.target === requestsModal) {
+                requestsModal.classList.add('hidden');
+            }
+        });
+        // NAYA: Accept/Decline button listener (Event Delegation)
+        requestsList.addEventListener('click', handleRequestAction);
+
+
+        // Search (Same as before)
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchDebounceTimer);
+            const query = e.target.value;
+            searchDebounceTimer = setTimeout(() => {
+                loadContacts(query);
+            }, 300);
+        });
