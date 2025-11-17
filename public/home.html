@@ -56,7 +56,6 @@
             display: none;
         }
         
-        /* === NAYA CSS: Notification Badge === */
         .notification-badge {
             position: absolute;
             top: -5px;
@@ -92,6 +91,7 @@
                     <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-1.707 1.707A1 1 0 003 14h14a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"></path></svg>
                     <span id="requests-count" class="notification-badge hidden">0</span>
                 </button>
+                
                 <div class="dropdown">
                     <button id="menu-btn" class="p-2 rounded-full hover:bg-green-700 dark:hover:bg-gray-700">
                         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path></svg>
@@ -164,6 +164,7 @@
             </form>
         </div>
     </div>
+
     <div id="requests-modal" class="modal-overlay hidden">
         <div class="modal-box bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md max-h-[70vh] flex flex-col">
             <div class="flex justify-between items-center mb-4 border-b dark:border-gray-700 pb-3">
@@ -175,14 +176,13 @@
             </div>
         </div>
     </div>
+
     <div id="toast" class="hidden fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg transition-opacity duration-300 z-30"></div>
     
-    <script>
-        // Yahan Part 2 paste karna
-    </script>
 </body>
 </html>
-                // === NAYA JAVASCRIPT (FINAL - KADAM 4.2 CORRECTED) ===
+    <script>
+        // === NAYA JAVASCRIPT (FINAL - KADAM 4.2 CORRECTED) ===
         
         // 1. Saare Elements Define Karna
         const socket = io();
@@ -359,8 +359,6 @@
                 }
                 contacts.forEach(renderContact); // Ab 'renderContact' defined hai
                 
-                // Pin button listeners ko yahan se hata diya, kyunki 'createContactCard' mein add ho gaya hai
-
             } catch (error) {
                 console.error('Error loading contacts:', error);
                 skeletonLoader.style.display = 'none';
@@ -412,7 +410,9 @@
         socket.on('new_friend_request', (request) => {
             console.log('Nayi friend request aayi:', request);
             showToast(`${request.displayName} sent you a friend request!`);
-            updateRequestCount(requestsCount.textContent + 1);
+            // Count ko bas 1 badha do
+            const currentCount = parseInt(requestsCount.textContent) || 0;
+            updateRequestCount(currentCount + 1);
         });
 
         socket.on('request_accepted', (newContact) => {
@@ -450,8 +450,19 @@
         });
         
         window.addEventListener('click', (e) => {
-            if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target) && !requestsBtn.contains(e.target) && !requestsModal.contains(e.target)) {
+            // NAYA: 'requestsBtn' aur 'requestsModal' ko bhi check karo
+            if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target) && 
+                !requestsBtn.contains(e.target) && !requestsModal.contains(e.target)) {
                 menuDropdown.style.display = 'none';
+            }
+            
+            // Agar menu khula hai aur bell icon par click kiya, toh menu band karo
+            if (requestsBtn.contains(e.target)) {
+                 menuDropdown.style.display = 'none';
+            }
+            // Agar bell khuli hai aur menu icon par click kiya, toh bell band karo
+            if (menuBtn.contains(e.target)) {
+                requestsModal.classList.add('hidden');
             }
         });
         
@@ -524,3 +535,4 @@
                 loadContacts(query);
             }, 300);
         });
+    </script>
