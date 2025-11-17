@@ -1,4 +1,4 @@
-// index.js (FINAL - Sab Fixes Ke Saath)
+// index.js (FINAL - NAYA FRIEND REQUEST SYSTEM - Part 1)
 import express from 'express';
 import http from 'http';
 import bcrypt from 'bcryptjs';
@@ -42,7 +42,7 @@ app.set('trust proxy', 1);
 
 // === NAYA: Server aur IO definition (FIXED) ===
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server); // 'io' ab sahi se defined hai
 
 const JWT_SECRET = 'your-very-secret-key-12345';
 const JWT_RESET_SECRET = 'your-password-reset-key-67890';
@@ -52,10 +52,9 @@ const connectedUsers = new Map();
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: 'wappy_avatars', // Cloudinary par folder ka naam
-    format: async (req, file) => 'png', // Sabko PNG format mein save karo
+    folder: 'wappy_avatars', 
+    format: async (req, file) => 'png', 
     public_id: (req, file) => {
-      // File ka naam user ke email se set karo (taaki overwrite ho)
       const id = req.body.groupId || req.user.email;
       return id;
     }
@@ -136,33 +135,28 @@ const messageSchema = new mongoose.Schema({
     replyTo: { type: replySchema, default: null },
     isStarred: { type: Boolean, default: false }
 });
+// === NAYA: Aapki file mein ye line missing thi ===
 const Message = mongoose.model('Message', messageSchema);
-// === NAYA: Friend Request Model ===
-// (Aapke suggestions 'b' aur 'e' ke hisaab se)
+
+// === NAYA: KADAM 1 - Friend Request Model ===
 const friendRequestSchema = new mongoose.Schema({
     requesterEmail: { type: String, required: true, index: true },
     receiverEmail: { type: String, required: true, index: true },
     status: { 
         type: String, 
-        // 'cancelled' status bhi add kiya (aapka suggestion)
         enum: ['pending', 'accepted', 'declined', 'cancelled'], 
         default: 'pending' 
     }
 }, {
-    // 'createdAt' aur 'updatedAt' automatically add karega (aapka suggestion)
     timestamps: true 
 });
-
-// === NAYA: Unique Constraint (Aapka Suggestion 'b') ===
-// Isse ek user (requester) dusre user (receiver) ko
-// ek hi pending request bhej paayega. Duplicate requests ruk jaayengi.
-friendRequestSchema.index({ requesterEmail: 1, receiverEmail: 1, status: 1 }, { 
+// Unique constraint
+friendRequestSchema.index({ requesterEmail: 1, receiverEmail: 1, status: 'pending' }, { 
     unique: true, 
-    // Sirf 'pending' requests ko unique rakho
     partialFilterExpression: { status: 'pending' } 
 });
-
 const FriendRequest = mongoose.model('FriendRequest', friendRequestSchema);
+// === END KADAM 1 ===
 
 
 // === Middleware & ProtectRoute ===
@@ -188,11 +182,6 @@ const protectRoute = (req, res, next) => {
   }
 };
 
-// === NAYA: IO Definition yahan se hata kar upar (Line 43) kar diya gaya hai ===
-// const io = new Server(server); // Ye line pehle yahan thi (galat)
-// ...
-
-// === NAYA: IO.USE AB SAHI CHALEGA ===
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.headers.cookie?.split('; ').find(row => row.startsWith('token='))?.split('=')[1];
@@ -246,6 +235,7 @@ async function canSeeInfo(requesterEmail, targetUser) {
     else if (targetUser.privacy.lastSeen === 'contacts' && isContact) { canSeeLastSeen = true; }
     return { canSeeAvatar, canSeeLastSeen };
 }
+// index.js (FINAL - NAYA FRIEND REQUEST SYSTEM - Part 2)
 app.get('/api/userinfo/:email', protectRoute, async (req, res) => {
   try {
     const friendEmail = req.params.email;
@@ -361,21 +351,18 @@ app.get('/api/chats', protectRoute, async (req, res) => {
     } catch (error) { console.error('[Wappy Error] Get chats error:', error); res.status(500).json({ message: 'Server error' }); }
 });
 
-// === NAYA: Cloudinary Avatar Upload Route (FIXED) ===
-app.post('/api/upload-avatar', protectRoute, upload.single('avatar'), async (req, res, next) => { // NAYA: 'next' add kiya
+app.post('/api/upload-avatar', protectRoute, upload.single('avatar'), async (req, res, next) => { 
   try {
     if (!req.file) { return res.status(400).send('No file uploaded.'); }
-    // NAYA: URL 'req.file.path' se aa raha hai
     const avatarUrl = req.file.path; 
     await User.updateOne({ email: req.user.email }, { $set: { avatarUrl: avatarUrl } });
     console.log(`[Wappy] Avatar updated for ${req.user.email}: ${avatarUrl}`);
     res.redirect('/profile.html');
   } catch (error) { 
     console.error('[Wappy Error] Avatar upload error:', error);
-    next(error); // NAYA: Error ko global handler par bhejo
+    next(error); 
   }
 });
-// === END FIX ===
 
 app.post('/api/toggle-block', protectRoute, async (req, res) => {
   try {
@@ -438,7 +425,7 @@ app.post('/api/toggle-star', protectRoute, async (req, res) => {
         const message = await Message.findOne({ messageId: messageId });
         if (!message) { return res.status(404).json({ message: "Message not found" }); }
         let isMyChat = false;
-        if (message.receiverGroupId) {
+        if (message.receiverGroupId){
             const group = await Group.findOne({ groupId: message.receiverGroupId }).lean();
             isMyChat = group && group.members.some(m => m.email === myEmail);
         } else { isMyChat = (message.senderEmail === myEmail) || (message.receiverEmail === myEmail); }
@@ -516,73 +503,195 @@ app.post('/set-name', protectRoute, async (req, res, next) => {
   }
 });
 
-// === NAYA: Mutual "Add Friend" Route (WhatsApp Jaisa) ===
+// === NAYA: KADAM 2 - "Send Friend Request" Route (Facebook Jaisa) ===
+// (Ye 'Mutual Add' waale code ko replace kar raha hai)
 app.post('/add-friend', protectRoute, async (req, res, next) => { 
   try {
-    const { friendEmail, nickname } = req.body; // Nickname jo User A, User B ke liye set karta hai
-    const ownerEmail = req.user.email; // User A ka email
+    // Nickname ki zaroorat nahi, woh accept par set hoga
+    const { friendEmail } = req.body; 
+    const requesterEmail = req.user.email;
 
-    // 1. Puraane Checks (Khud ko add na karein, User B ka wajood hai ya nahi)
-    if (friendEmail === ownerEmail) { return res.status(400).send("You cannot add yourself."); }
-    const friendUser = await User.findOne({ email: friendEmail }).lean(); // User B
-    if (!friendUser) { return res.status(404).send("User with this email does not exist."); }
-    
-    // 2. Check A -> B (Kya A ne B ko pehle hi add kar liya hai?)
-    const alreadyFriendAtoB = await Contact.findOne({ ownerEmail: ownerEmail, friendEmail: friendEmail }).lean();
-    if (alreadyFriendAtoB) { return res.status(400).send("This user is already in your contacts."); }
-    
-    // 3. NAYA: Check B -> A (Kya B ne A ko pehle hi add kar liya hai?)
-    // (Ye check zaroori hai taaki duplicate na bane)
-    const alreadyFriendBtoA = await Contact.findOne({ ownerEmail: friendEmail, friendEmail: ownerEmail }).lean();
-    if (alreadyFriendBtoA) { return res.status(400).send("This user has already added you."); }
+    // 1. Basic Checks
+    if (friendEmail === requesterEmail) { return res.status(400).json({message: "You cannot send a request to yourself."}); }
+    const friendUser = await User.findOne({ email: friendEmail }).lean();
+    if (!friendUser) { return res.status(404).json({message: "User with this email does not exist."}); }
 
-    // 4. NAYA: User A ka data dhoondo (taaki User B ko de sakein)
-    const ownerUser = await User.findOne({ email: ownerEmail }).lean();
-    const ownerDisplayName = ownerUser.displayName || ownerEmail.split('@')[0];
+    // 2. Check ki pehle se dost toh nahi hain
+    const alreadyFriend = await Contact.findOne({ ownerEmail: requesterEmail, friendEmail: friendEmail }).lean();
+    if (alreadyFriend) { return res.status(400).json({message: "You are already friends with this user."}); }
 
-    // 5. Contact (A -> B) banao (Jaisa pehle tha)
-    const newContactForA = new Contact({ 
-        ownerEmail: ownerEmail,     // User A
-        friendEmail: friendEmail,   // User B
-        nickname: nickname || friendUser.displayName || friendEmail.split('@')[0]
-    });
-    
-    // 6. NAYA: Mutual Contact (B -> A) banao
-    const newContactForB = new Contact({
-        ownerEmail: friendEmail,       // Owner ab User B hai
-        friendEmail: ownerEmail,      // Friend ab User A hai
-        nickname: ownerDisplayName  // User B ki list mein User A ka naam
+    // 3. Check ki pehle se PENDING request toh nahi hai (A -> B ya B -> A)
+    const existingRequest = await FriendRequest.findOne({
+      $or: [
+        { requesterEmail: requesterEmail, receiverEmail: friendEmail, status: 'pending' },
+        { requesterEmail: friendEmail, receiverEmail: requesterEmail, status: 'pending' }
+      ]
     });
 
-    // 7. Dono ko ek saath database mein save karo
-    await Promise.all([
-        newContactForA.save(),
-        newContactForB.save()
-    ]);
+    if (existingRequest) {
+      if (existingRequest.requesterEmail === friendEmail) {
+        return res.status(400).json({message: "This user has already sent you a request. Check your notifications."});
+      } else {
+        return res.status(400).json({message: "You have already sent a request to this user."});
+      }
+    }
+
+    // 4. Nayi request banao
+    const newRequest = new FriendRequest({
+      requesterEmail: requesterEmail,
+      receiverEmail: friendEmail,
+      status: 'pending'
+    });
+    await newRequest.save();
     
-    console.log(`[Wappy] MUTUAL FRIENDSHIP created: ${ownerEmail} <-> ${friendEmail}`);
+    console.log(`[Wappy] NEW FRIEND REQUEST: ${requesterEmail} -> ${friendEmail}`);
     
-    // 8. NAYA: User B ko real-time notification bhejo (agar woh online hai)
+    // 5. NAYA: User B ko real-time notification bhejo (agar woh online hai)
     const friendSocketId = connectedUsers.get(friendEmail);
     if (friendSocketId) {
-        // Hum User B ko poora 'Contact' object bhejte hain
-        // taaki uski contact list real-time update ho sake
-        const { canSeeAvatar, canSeeLastSeen } = await canSeeInfo(friendEmail, ownerUser); // Check privacy
-        const contactDataForB = {
-            ...newContactForB.toObject(), // Mongoose doc ko object banao
-            status: canSeeLastSeen ? ownerUser.status : 'Offline', 
-            lastSeen: canSeeLastSeen ? ownerUser.lastSeen : 0,
-            avatarUrl: canSeeAvatar ? ownerUser.avatarUrl : '' 
-        };
-        // Naya event bhej rahe hain: 'new contact added'
-        io.to(friendSocketId).emit('new contact added', contactDataForB);
+      const requesterUser = await User.findOne({ email: requesterEmail }).select('displayName avatarUrl').lean();
+      io.to(friendSocketId).emit('new_friend_request', {
+          _id: newRequest._id, // Request ki ID
+          requesterEmail: requesterEmail,
+          displayName: requesterUser.displayName || requesterEmail.split('@')[0],
+          avatarUrl: requesterUser.avatarUrl
+      });
     }
     
-    res.redirect('/home.html');
+    // NAYA: Redirect ke bajaaye JSON response bhejo
+    res.status(200).json({ message: "Friend request sent!" });
+
   } catch (error) { 
+    if (error.code === 11000) { // Duplicate key error
+      return res.status(400).json({message: "You have already sent a request to this user."});
+    }
     next(error); 
   }
 });
+
+// === NAYA: KADAM 3 - Friend Request Management Routes ===
+
+// 1. User ki saari PENDING requests fetch karna
+app.get('/api/friend-requests', protectRoute, async (req, res, next) => {
+  try {
+    const myEmail = req.user.email;
+    const requests = await FriendRequest.find({ 
+      receiverEmail: myEmail, 
+      status: 'pending' 
+    }).lean();
+    
+    const detailedRequests = await Promise.all(requests.map(async (request) => {
+      const user = await User.findOne({ email: request.requesterEmail }).select('displayName avatarUrl').lean();
+      return {
+        _id: request._id, // Request ki ID
+        requesterEmail: request.requesterEmail,
+        displayName: user ? (user.displayName || request.requesterEmail.split('@')[0]) : request.requesterEmail.split('@')[0],
+        avatarUrl: user ? user.avatarUrl : ''
+      };
+    }));
+    
+    res.status(200).json(detailedRequests);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 2. Request ko "ACCEPT" karna
+app.post('/api/friend-requests/accept', protectRoute, async (req, res, next) => {
+  try {
+    const { requestId } = req.body; 
+    const myEmail = req.user.email; // Main (User B)
+
+    const request = await FriendRequest.findOne({ 
+      _id: requestId, 
+      receiverEmail: myEmail, 
+      status: 'pending' 
+    });
+
+    if (!request) {
+      return res.status(404).json({message: "Request not found or already handled."});
+    }
+    
+    const requesterEmail = request.requesterEmail; // User A
+
+    const meUser = await User.findOne({ email: myEmail }).lean();
+    const requesterUser = await User.findOne({ email: requesterEmail }).lean();
+
+    if (!requesterUser) {
+        return res.status(404).json({message: "Requester user not found."});
+    }
+
+    // 3. Mutual contacts banao
+    const newContactForMe = new Contact({
+      ownerEmail: myEmail,
+      friendEmail: requesterEmail,
+      nickname: requesterUser.displayName || requesterEmail.split('@')[0]
+    });
+    
+    const newContactForRequester = new Contact({
+      ownerEmail: requesterEmail,
+      friendEmail: myEmail,
+      nickname: meUser.displayName || myEmail.split('@')[0]
+    });
+
+    // 4. Request ko 'accepted' mark karo aur dono contacts save karo
+    request.status = 'accepted';
+    
+    await Promise.all([
+      request.save(),
+      newContactForMe.save(),
+      newContactForRequester.save()
+    ]);
+    
+    console.log(`[Wappy] FRIEND REQUEST ACCEPTED: ${requesterEmail} <-> ${myEmail}`);
+
+    // 5. NAYA: User A (Requester) ko notification bhejo ki request accept ho gayi
+    const requesterSocketId = connectedUsers.get(requesterEmail);
+    if (requesterSocketId) {
+        const { canSeeAvatar, canSeeLastSeen } = await canSeeInfo(requesterEmail, meUser);
+        const contactDataForA = {
+            ...newContactForRequester.toObject(),
+            status: canSeeLastSeen ? meUser.status : 'Offline', 
+            lastSeen: canSeeLastSeen ? meUser.lastSeen : 0,
+            avatarUrl: canSeeAvatar ? meUser.avatarUrl : '' 
+        };
+        io.to(requesterSocketId).emit('request_accepted', contactDataForA);
+    }
+
+    res.status(200).json({ message: "Friend request accepted!" });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 3. Request ko "DECLINE" karna
+app.post('/api/friend-requests/decline', protectRoute, async (req, res, next) => {
+  try {
+    const { requestId } = req.body;
+    const myEmail = req.user.email;
+
+    const result = await FriendRequest.updateOne({
+      _id: requestId,
+      receiverEmail: myEmail,
+      status: 'pending'
+    }, {
+      status: 'declined'
+    });
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({message: "Request not found or already handled."});
+    }
+    
+    console.log(`[Wappy] FRIEND REQUEST DECLINED: by ${myEmail}`);
+    res.status(200).json({ message: "Friend request declined." });
+
+  } catch (error) {
+    next(error);
+  }
+});
+// === END KADAM 3 ===
+
 
 app.get('/logout', (req, res) => {
   res.cookie('token', '', { maxAge: 1 });
@@ -598,7 +707,6 @@ app.post('/forgot-password', async (req, res, next) => {
       return res.send("If this email is registered, you will receive a reset link.");
     }
     const resetToken = jwt.sign({ email: user.email }, JWT_RESET_SECRET, { expiresIn: '10m' });
-    // === NAYA: URL FIX (wappy-pro) ===
     const resetUrl = `https://wappy-pro.onrender.com/reset-password.html?token=${resetToken}`;
     console.log(`[Wappy Forgot] Password reset link (SendGrid) sending to: ${email}`);
     const msg = {
@@ -631,6 +739,7 @@ app.post('/reset-password', async (req, res, next) => {
     next(error); 
   }
 });
+// index.js (FINAL - NAYA FRIEND REQUEST SYSTEM - Part 3)
 // === Socket.io Logic ===
 io.on('connection', async (socket) => {
   const userEmail = socket.user.email;
