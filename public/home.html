@@ -168,6 +168,26 @@
                 toast.classList.add('hidden');
             }, 3000);
         }
+        // === NAYA: Real-time notification jab koi aapko add kare ===
+socket.on('new contact added', (newContact) => {
+    console.log('Naya contact add hua hai:', newContact);
+    
+    // 1. Ek naya contact card banao
+    const contactCard = createContactCard(newContact);
+    
+    // 2. Us card ko contact list mein sabse upar daalo
+    // (Skeleton loader ko hata kar, agar woh hai toh)
+    const skeleton = document.getElementById('skeleton-loader');
+    if (skeleton) {
+        skeleton.remove();
+    }
+    
+    // Naye contact ko list mein sabse upar (top) par add karo
+    contactsListDiv.prepend(contactCard);
+    
+    // 3. User ko notification dikhao
+    showToast(`${newContact.nickname} has added you to their contacts!`);
+});
 
         async function loadContacts(searchQuery = '') {
             loadingText.style.display = 'none';
@@ -211,34 +231,51 @@
                 contactsListDiv.innerHTML = '<p class="text-red-500 dark:text-red-400 p-6">Could not load contacts.</p>';
             }
         }
-        
-        function renderContact(contact) {
-            const contactEl = document.createElement('div');
-            contactEl.className = `flex items-center p-4 border-b dark:border-gray-700 no-underline ${contact.isPinned ? 'pinned dark:pinned' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`;
-            
-            const avatarSrc = contact.avatarUrl 
-                ? contact.avatarUrl 
-                : `https://ui-avatars.com/api/?name=${contact.nickname.charAt(0)}&background=random&size=64`;
+        // === NAYA: Kadam 2 - createContactCard Function ===
+// (Ye function aapke renderContact code se banaya gaya hai)
 
-            contactEl.innerHTML = `
-                <a href="/chat.html?id=${contact.friendEmail}" class="flex-1 flex items-center no-underline">
-                    <img src="${avatarSrc}" alt="Avatar" class="w-12 h-12 rounded-full object-cover mr-4">
-                    <div class="flex-1">
-                        <span class="text-lg text-gray-800 dark:text-white font-medium">${contact.nickname}</span>
-                        <div id="status-${contact.friendEmail}" class="flex items-center space-x-2">
-                            <span class="h-3 w-3 rounded-full ${contact.status === 'Online' ? 'bg-green-500' : 'bg-gray-400'}"></span>
-                            <span class="text-sm ${contact.status === 'Online' ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}">
-                                ${contact.status}
-                            </span>
-                        </div>
-                    </div>
-                </a>
-                <button class="pin-btn p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600" data-email="${contact.friendEmail}" data-pinned="${contact.isPinned}">
-                    <span class="text-xl">${contact.isPinned ? '📌' : '📍'}</span>
-                </button>
-            `;
-            contactsListDiv.appendChild(contactEl);
-        }
+function createContactCard(contact) {
+    const contactEl = document.createElement('div');
+    // Class list se 'border-b' hata diya taaki links clear lagein
+    contactEl.className = `flex items-center p-4 dark:border-gray-700 no-underline ${contact.isPinned ? 'pinned dark:pinned' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`;
+    
+    const avatarSrc = contact.avatarUrl 
+        ? contact.avatarUrl 
+        : `https://ui-avatars.com/api/?name=${contact.nickname.charAt(0)}&background=random&size=64`;
+
+    contactEl.innerHTML = `
+        <a href="/chat.html?id=${contact.friendEmail}" class="flex-1 flex items-center no-underline">
+            <img src="${avatarSrc}" alt="Avatar" class="w-12 h-12 rounded-full object-cover mr-4">
+            <div class="flex-1">
+                <span class="text-lg text-gray-800 dark:text-white font-medium">${contact.nickname}</span>
+                <div id="status-${contact.friendEmail}" class="flex items-center space-x-2">
+                    <span class_name="h-3 w-3 rounded-full ${contact.status === 'Online' ? 'bg-green-500' : 'bg-gray-400'}"></span>
+                    <span class="text-sm ${contact.status === 'Online' ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}">
+                        ${contact.status || 'Offline'}
+                    </span>
+                </div>
+            </div>
+        </a>
+        <button class="pin-btn p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600" data-email="${contact.friendEmail}" data-pinned="${contact.isPinned}">
+            <span class="text-xl">${contact.isPinned ? '📌' : '📍'}</span>
+        </button>
+    `;
+    
+    // Naya event listener add karo taaki pin button kaam kare
+    const pinBtn = contactEl.querySelector('.pin-btn');
+    if (pinBtn) {
+        // 'togglePin' function aapki file mein pehle se hona chahiye
+        pinBtn.addEventListener('click', togglePin); 
+    }
+
+    return contactEl; // Sabse zaroori: Element ko return karo
+}
+
+        // === NAYA: Kadam 3 - Updated renderContact Function ===
+function renderContact(contact) {
+    const contactEl = createContactCard(contact); // Naya function call karo
+    contactsListDiv.appendChild(contactEl);
+}
         
         async function togglePin(event) {
             const button = event.currentTarget;

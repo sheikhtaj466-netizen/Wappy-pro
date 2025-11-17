@@ -137,6 +137,32 @@ const messageSchema = new mongoose.Schema({
     isStarred: { type: Boolean, default: false }
 });
 const Message = mongoose.model('Message', messageSchema);
+// === NAYA: Friend Request Model ===
+// (Aapke suggestions 'b' aur 'e' ke hisaab se)
+const friendRequestSchema = new mongoose.Schema({
+    requesterEmail: { type: String, required: true, index: true },
+    receiverEmail: { type: String, required: true, index: true },
+    status: { 
+        type: String, 
+        // 'cancelled' status bhi add kiya (aapka suggestion)
+        enum: ['pending', 'accepted', 'declined', 'cancelled'], 
+        default: 'pending' 
+    }
+}, {
+    // 'createdAt' aur 'updatedAt' automatically add karega (aapka suggestion)
+    timestamps: true 
+});
+
+// === NAYA: Unique Constraint (Aapka Suggestion 'b') ===
+// Isse ek user (requester) dusre user (receiver) ko
+// ek hi pending request bhej paayega. Duplicate requests ruk jaayengi.
+friendRequestSchema.index({ requesterEmail: 1, receiverEmail: 1, status: 1 }, { 
+    unique: true, 
+    // Sirf 'pending' requests ko unique rakho
+    partialFilterExpression: { status: 'pending' } 
+});
+
+const FriendRequest = mongoose.model('FriendRequest', friendRequestSchema);
 
 
 // === Middleware & ProtectRoute ===
@@ -490,18 +516,68 @@ app.post('/set-name', protectRoute, async (req, res, next) => {
   }
 });
 
+// === NAYA: Mutual "Add Friend" Route (WhatsApp Jaisa) ===
 app.post('/add-friend', protectRoute, async (req, res, next) => { 
   try {
-    const { friendEmail, nickname } = req.body;
-    const ownerEmail = req.user.email;
+    const { friendEmail, nickname } = req.body; // Nickname jo User A, User B ke liye set karta hai
+    const ownerEmail = req.user.email; // User A ka email
+
+    // 1. Puraane Checks (Khud ko add na karein, User B ka wajood hai ya nahi)
     if (friendEmail === ownerEmail) { return res.status(400).send("You cannot add yourself."); }
-    const friendExists = await User.findOne({ email: friendEmail }).lean();
-    if (!friendExists) { return res.status(404).send("User with this email does not exist."); }
-    const alreadyFriend = await Contact.findOne({ ownerEmail: ownerEmail, friendEmail: friendEmail }).lean();
-    if (alreadyFriend) { return res.status(400).send("This user is already in your contacts."); }
-    const newContact = new Contact({ ownerEmail: ownerEmail, friendEmail: friendEmail, nickname: nickname || friendExists.displayName || friendEmail.split('@')[0] });
-    await newContact.save();
-    console.log(`[Wappy] NEW FRIEND added for ${ownerEmail}: ${friendEmail}`);
+    const friendUser = await User.findOne({ email: friendEmail }).lean(); // User B
+    if (!friendUser) { return res.status(404).send("User with this email does not exist."); }
+    
+    // 2. Check A -> B (Kya A ne B ko pehle hi add kar liya hai?)
+    const alreadyFriendAtoB = await Contact.findOne({ ownerEmail: ownerEmail, friendEmail: friendEmail }).lean();
+    if (alreadyFriendAtoB) { return res.status(400).send("This user is already in your contacts."); }
+    
+    // 3. NAYA: Check B -> A (Kya B ne A ko pehle hi add kar liya hai?)
+    // (Ye check zaroori hai taaki duplicate na bane)
+    const alreadyFriendBtoA = await Contact.findOne({ ownerEmail: friendEmail, friendEmail: ownerEmail }).lean();
+    if (alreadyFriendBtoA) { return res.status(400).send("This user has already added you."); }
+
+    // 4. NAYA: User A ka data dhoondo (taaki User B ko de sakein)
+    const ownerUser = await User.findOne({ email: ownerEmail }).lean();
+    const ownerDisplayName = ownerUser.displayName || ownerEmail.split('@')[0];
+
+    // 5. Contact (A -> B) banao (Jaisa pehle tha)
+    const newContactForA = new Contact({ 
+        ownerEmail: ownerEmail,     // User A
+        friendEmail: friendEmail,   // User B
+        nickname: nickname || friendUser.displayName || friendEmail.split('@')[0]
+    });
+    
+    // 6. NAYA: Mutual Contact (B -> A) banao
+    const newContactForB = new Contact({
+        ownerEmail: friendEmail,       // Owner ab User B hai
+        friendEmail: ownerEmail,      // Friend ab User A hai
+        nickname: ownerDisplayName  // User B ki list mein User A ka naam
+    });
+
+    // 7. Dono ko ek saath database mein save karo
+    await Promise.all([
+        newContactForA.save(),
+        newContactForB.save()
+    ]);
+    
+    console.log(`[Wappy] MUTUAL FRIENDSHIP created: ${ownerEmail} <-> ${friendEmail}`);
+    
+    // 8. NAYA: User B ko real-time notification bhejo (agar woh online hai)
+    const friendSocketId = connectedUsers.get(friendEmail);
+    if (friendSocketId) {
+        // Hum User B ko poora 'Contact' object bhejte hain
+        // taaki uski contact list real-time update ho sake
+        const { canSeeAvatar, canSeeLastSeen } = await canSeeInfo(friendEmail, ownerUser); // Check privacy
+        const contactDataForB = {
+            ...newContactForB.toObject(), // Mongoose doc ko object banao
+            status: canSeeLastSeen ? ownerUser.status : 'Offline', 
+            lastSeen: canSeeLastSeen ? ownerUser.lastSeen : 0,
+            avatarUrl: canSeeAvatar ? ownerUser.avatarUrl : '' 
+        };
+        // Naya event bhej rahe hain: 'new contact added'
+        io.to(friendSocketId).emit('new contact added', contactDataForB);
+    }
+    
     res.redirect('/home.html');
   } catch (error) { 
     next(error); 
