@@ -129,7 +129,6 @@ const replySchema = new mongoose.Schema({
     text: String,
     senderName: String
 }, { _id: false });
-
 const messageSchema = new mongoose.Schema({
     messageId: { type: String, required: true, unique: true, default: nanoid },
     senderEmail: { type: String, required: true, index: true },
@@ -143,13 +142,15 @@ const messageSchema = new mongoose.Schema({
     deletedBy: [String],
     replyTo: { type: replySchema, default: null },
     isStarred: { type: Boolean, default: false },
-    // === NAYA: Truth Mode Feature ===
-    isTruthMode: { type: Boolean, default: false }
+    
+    // === Truth Mode Feature ===
+    isTruthMode: { type: Boolean, default: false },
+    
+    // === NAYA: Puzzle Message Feature ===
+    isPuzzle: { type: Boolean, default: false } 
 });
 
-// === NAYA: Aapki file mein ye line missing thi ===
 const Message = mongoose.model('Message', messageSchema);
-
 // === NAYA: KADAM 1 - Friend Request Model ===
 const friendRequestSchema = new mongoose.Schema({
     requesterEmail: { type: String, required: true, index: true },
@@ -825,9 +826,10 @@ io.on('connection', async (socket) => {
     });
   });
 // === NAYA: 'send message' (Truth Mode ke saath) ===
-socket.on('send message', async (data) => {
-    // KADAM 1: 'isTruthMode' ko data se nikalo (default 'false' rakho)
-    const { receiverId, text, tempId, replyTo, isTruthMode = false } = data; 
+  // === UPDATED: 'send message' (Truth Mode + Puzzle Mode) ===
+  socket.on('send message', async (data) => {
+    // KADAM 1: 'isTruthMode' aur 'isPuzzle' nikalo
+    const { receiverId, text, tempId, replyTo, isTruthMode = false, isPuzzle = false } = data; 
     
     if (!text || text.trim() === "") { return; }
     const trimmedText = text.trim();
@@ -849,8 +851,9 @@ socket.on('send message', async (data) => {
       replyTo: replyTo || null, 
       isStarred: false, 
       tempId: tempId,
-      // KADAM 2: 'isTruthMode' ko database object mein add karo
-      isTruthMode: isTruthMode 
+      isTruthMode: isTruthMode,
+      // KADAM 2: Puzzle status save karo
+      isPuzzle: isPuzzle 
     };
     
     let roomName = receiverId;
@@ -878,18 +881,17 @@ socket.on('send message', async (data) => {
         messageData.status = 'delivered';
     }
     
-    // KADAM 3: Naya message (jismein isTruthMode hai) save karo
     const newMessage = new Message(messageData);
     await newMessage.save();
     
-    // KADAM 4: Poora naya 'messageData' (truth mode ke saath) client ko bhejo
     io.to(roomName).emit('new message', messageData);
     
     socketsToNotify.forEach(socketId => {
         if(socketId) io.to(socketId).emit('chat list update');
     });
-    console.log(`[Wappy Socket] Message sent to room ${roomName}: ${trimmedText} (TruthMode: ${isTruthMode})`);
+    console.log(`[Wappy Socket] Message sent: ${trimmedText} (Truth:${isTruthMode}, Puzzle:${isPuzzle})`);
   });
+
 // === NAYA: 'delete message' (Truth Mode check ke saath) ===
 socket.on('delete message', async (data) => {
     try {
