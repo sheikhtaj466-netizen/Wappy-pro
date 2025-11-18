@@ -25,65 +25,63 @@
             background-color: #E5DDD5; 
             background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); 
             background-attachment: fixed;
-            transition: background 0.5s ease; /* Smooth color change */
+            transition: background 0.5s ease; 
         }
         .dark body { background-color: #0b141a; background-image: url('https://bg.wpp.chat/d/dark.png'); }
 
-        /* === NAYA: MOOD THEMES (Backgrounds) === */
-        /* Happy: Sunny Yellow/Orange */
-        body.theme-happy { 
-            background-image: linear-gradient(120deg, #f6d365 0%, #fda085 100%) !important; 
-        }
-        /* Sad: Rainy Blue */
-        body.theme-sad { 
-            background-image: linear-gradient(to top, #30cfd0 0%, #330867 100%) !important; 
-            color: white;
-        }
-        /* Angry: Intense Red/Purple */
-        body.theme-angry { 
-            background-image: linear-gradient(to right, #b91d73, #f953c6) !important; 
-            color: white;
-        }
-        /* Love: Pink Hearts vibe */
-        body.theme-love { 
-            background-image: linear-gradient(to top, #ff9a9e 0%, #fecfef 99%, #fecfef 100%) !important; 
-        }
-        /* Cool: Fresh Cyan/Teal */
-        body.theme-cool { 
-            background-image: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%) !important; 
-        }
+        /* === MOOD THEMES === */
+        body.theme-happy { background-image: linear-gradient(120deg, #f6d365 0%, #fda085 100%) !important; }
+        body.theme-sad { background-image: linear-gradient(to top, #30cfd0 0%, #330867 100%) !important; color: white; }
+        body.theme-angry { background-image: linear-gradient(to right, #b91d73, #f953c6) !important; color: white; }
+        body.theme-love { background-image: linear-gradient(to top, #ff9a9e 0%, #fecfef 99%, #fecfef 100%) !important; }
+        body.theme-cool { background-image: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%) !important; }
         
-        /* Bubble Styles (Standard) */
+        /* Bubbles */
         .bubble { position: relative; max-width: 70%; padding: 8px 12px; border-radius: 8px; box-shadow: 0 1px 1px rgba(0,0,0,0.1); overflow-wrap: break-word; word-wrap: break-word; user-select: none; }
         .bubble-sender { background-color: #DCF8C6; align-self: flex-end; color: #0F172A; cursor: pointer; }
         .dark .bubble-sender { background-color: #005C4B; color: #E9EDEF; }
         .bubble-receiver { background-color: #FFFFFF; align-self: flex-start; color: #0F172A; cursor: pointer; }
         .dark .bubble-receiver { background-color: #202C33; color: #E9EDEF; }
         
-        /* Mood specific adjustments (text readability) */
-        body.theme-angry .bubble-receiver, body.theme-sad .bubble-receiver {
-            background-color: rgba(255, 255, 255, 0.9); /* Thoda transparent taaki background dikhe */
-        }
+        /* Mood adjustments */
+        body.theme-angry .bubble-receiver, body.theme-sad .bubble-receiver { background-color: rgba(255, 255, 255, 0.95); }
         
         .sender-name { font-size: 0.8rem; font-weight: 600; color: #00A884; margin-bottom: 2px; }
-        .bubble-meta { font-size: 0.75rem; color: #6B7280; text-align: right; margin-top: 4px; }
+        
+        /* Meta (Time & Ticks) */
+        .bubble-meta { 
+            font-size: 0.7rem; 
+            color: #6B7280; /* Gray text always visible inside bubble */
+            text-align: right; 
+            margin-top: 4px; 
+            display: flex; 
+            justify-content: flex-end; 
+            align-items: center;
+        }
         .dark .bubble-meta { color: #8696A0; }
         
-        /* Context Menu & Other UI */
+        /* Context Menu */
         #context-menu { position: absolute; background-color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 50; display: none; }
         .dark #context-menu { background-color: #202C33; }
         #context-menu button { display: block; width: 100%; padding: 12px 16px; background: none; border: none; text-align: left; color: #0F172A; font-size: 1rem; }
         .dark #context-menu button { color: #E9EDEF; }
+        
+        /* Reply Preview */
         #reply-preview { padding: 8px 12px; background-color: #f0f2f5; border-bottom: 1px solid #e0e0e0; }
         .dark #reply-preview { background-color: #2a3942; border-bottom: 1px solid #374151; }
         
-        /* Truth Badge */
+        /* Truth Badge & Star */
         .truth-badge { font-size: 0.8rem; margin-right: 4px; display: none; }
         .bubble.is-truth .truth-badge { display: inline; }
-        .bubble.is-truth { border: 2px solid #22c55e; } /* Green border for Truth Mode */
+        .bubble.is-truth { border: 2px solid #22c55e; }
+        .star-icon { font-size: 0.7rem; color: #fbbf24; margin-right: 4px; display: none; }
+        .bubble.starred .star-icon { display: inline; }
         
         .hidden { display: none; }
-        .starred .star-icon { display: inline; color: #fbbf24; margin-right: 4px; }
+        
+        /* Toast */
+        #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 4px; padding: 16px; position: fixed; z-index: 100; left: 50%; transform: translateX(-50%); bottom: 30px; transition: visibility 0s, opacity 0.5s linear; opacity: 0; }
+        #toast.show { visibility: visible; opacity: 1; }
     </style>
 </head>
 <body class="flex flex-col h-screen">
@@ -149,7 +147,6 @@
     </div>
     <div id="toast"></div>
     <script>
-        // === JAVASCRIPT (MOOD UPDATE) ===
         const socket = io();
         const form = document.getElementById('form');
         const input = document.getElementById('input');
@@ -157,223 +154,266 @@
         const friendNameHeader = document.getElementById('friend-name');
         const friendStatusHeader = document.getElementById('friend-status');
         const friendAvatarHeader = document.getElementById('friend-avatar');
-        const friendMoodIcon = document.getElementById('friend-mood-icon'); // NAYA
+        const friendMoodIcon = document.getElementById('friend-mood-icon');
         
         const menuBtn = document.getElementById('menu-btn');
         const menuDropdown = document.getElementById('menu-dropdown');
         const blockBtn = document.getElementById('block-btn');
         const toast = document.getElementById('toast');
-        
-        // Truth Mode
         const truthModeBtn = document.getElementById('truth-mode-btn');
         let isTruthModeActive = false;
         
-        // Context & Reply
         const contextMenuOverlay = document.getElementById('context-menu-overlay');
         const contextMenu = document.getElementById('context-menu');
         const replyPreview = document.getElementById('reply-preview');
+        const replySenderEl = document.getElementById('reply-sender');
+        const replyTextEl = document.getElementById('reply-text');
         
-        let myEmail = '';
-        let chatId = '';
-        let isGroupChat = false;
-        let isBlocked = false;
-        let currentReplyTo = null;
-        let currentContextMenuMsgId = null;
-        let isLoading = true;
+        let myEmail = '', chatId = '', isGroupChat = false, isBlocked = false;
+        let currentReplyTo = null, currentContextMenuMsgId = null, isLoading = true;
+        let messageQueue = [], updateQueue = [], deleteQueue = [], removeQueue = [], starQueue = [];
+        let currentCursor = Date.now(), hasMoreMessages = true, isLoadingMore = false;
 
         const urlParams = new URLSearchParams(window.location.search);
         chatId = urlParams.get('id');
         if (!chatId) window.location.href = '/chats.html';
         isGroupChat = !chatId.includes('@');
 
-        function showToast(message) {
-            toast.textContent = message;
-            toast.className = "show";
+        // === FIX: TICKS FUNCTION (Inline Styles for Visibility) ===
+        function getTicks(status) {
+            if (status === 'sending') return '<span style="margin-left:4px; font-size:0.7rem; color:#6B7280;">🕒</span>';
+            if (status === 'seen') return '<span style="margin-left:4px; font-size:0.7rem; color:#3b82f6; font-weight:bold;">✓✓</span>';
+            if (status === 'delivered') return '<span style="margin-left:4px; font-size:0.7rem; color:#6B7280; font-weight:bold;">✓✓</span>';
+            return '<span style="margin-left:4px; font-size:0.7rem; color:#6B7280; font-weight:bold;">✓</span>';
+        }
+
+        function formatTime(timestamp) {
+            return new Date(timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+        }
+        function showToast(msg) {
+            toast.textContent = msg; toast.className = "show";
             setTimeout(() => { toast.className = toast.className.replace("show", ""); }, 3000);
         }
 
-        // === NAYA: Mood UI Update Function ===
         function applyMoodTheme(mood) {
-            // Pehle saare purane themes hatao
             document.body.classList.remove('theme-happy', 'theme-sad', 'theme-angry', 'theme-love', 'theme-cool');
-            
-            // Mood Icon aur Theme set karo
-            let icon = '';
             if (mood && mood !== 'default') {
                 document.body.classList.add(`theme-${mood}`);
-                
-                switch(mood) {
-                    case 'happy': icon = '😊'; break;
-                    case 'sad': icon = '😔'; break;
-                    case 'angry': icon = '😡'; break;
-                    case 'love': icon = '😍'; break;
-                    case 'cool': icon = '😎'; break;
-                }
-                friendMoodIcon.textContent = icon;
-            } else {
-                friendMoodIcon.textContent = ''; // Default mein koi icon nahi
-            }
+                const icons = { 'happy':'😊', 'sad':'😔', 'angry':'😡', 'love':'😍', 'cool':'😎' };
+                friendMoodIcon.textContent = icons[mood] || '';
+            } else { friendMoodIcon.textContent = ''; }
         }
 
         async function loadChatData() {
             try {
                 isLoading = true;
-                const meRes = await fetch('/api/me');
-                const me = await meRes.json();
-                myEmail = me.email;
-
+                const meRes = await fetch('/api/me'); const me = await meRes.json(); myEmail = me.email;
                 const infoUrl = isGroupChat ? `/api/groupinfo/${chatId}` : `/api/userinfo/${chatId}`;
-                const infoRes = await fetch(infoUrl);
-                if (!infoRes.ok) throw new Error('Error');
+                const infoRes = await fetch(infoUrl); if (!infoRes.ok) throw new Error('Error');
                 const chatInfo = await infoRes.json();
 
                 friendNameHeader.textContent = chatInfo.displayName || chatInfo.groupName;
-                
-                // Avatar
                 const avatarUrl = chatInfo.avatarUrl || chatInfo.groupAvatar;
-                friendAvatarHeader.src = avatarUrl ? avatarUrl : `https://ui-avatars.com/api/?name=${(chatInfo.displayName || chatInfo.groupName).charAt(0)}&background=random&size=64`;
+                friendAvatarHeader.src = avatarUrl || `https://ui-avatars.com/api/?name=${(chatInfo.displayName || chatInfo.groupName).charAt(0)}&background=random&size=64`;
 
                 if (isGroupChat) {
-                    friendStatusHeader.textContent = `${chatInfo.members.length} members`;
-                    blockBtn.style.display = 'none';
+                    friendStatusHeader.textContent = `${chatInfo.members.length} members`; blockBtn.style.display = 'none';
                 } else {
                     friendStatusHeader.textContent = chatInfo.status === 'Online' ? 'Online' : 'Offline';
-                    isBlocked = chatInfo.isBlocked;
-                    updateBlockUI(isBlocked);
-                    blockBtn.style.display = 'block';
-                    
-                    // === NAYA: Mood Apply Karo ===
-                    console.log("Friend's Mood:", chatInfo.currentMood);
+                    isBlocked = chatInfo.isBlocked; updateBlockUI(isBlocked); blockBtn.style.display = 'block';
                     applyMoodTheme(chatInfo.currentMood);
                 }
-
                 socket.emit('join room', chatId);
-                
-                // Messages Load Karo
-                const msgsRes = await fetch(`/api/messages/${chatId}`);
+                const msgsRes = await fetch(`/api/messages/${chatId}?cursor=${Date.now()}`);
                 const data = await msgsRes.json();
-                messages.innerHTML = ''; // Clear spinner
-                data.messages.forEach(msg => renderMessage(msg, false));
-                messages.scrollTop = messages.scrollHeight;
+                currentCursor = data.nextCursor; hasMoreMessages = data.nextCursor !== null;
                 
+                document.getElementById('loading-spinner').classList.add('hidden');
+                data.messages.forEach(msg => renderMessage(msg, false, false));
+                messages.scrollTop = messages.scrollHeight;
+                socket.emit('mark messages seen', { chatId: chatId });
                 isLoading = false;
-
-            } catch (error) {
-                console.error(error);
-                friendNameHeader.textContent = 'Error loading chat';
-            }
+                
+                // Process queues
+                messageQueue.forEach(msg => renderMessage(msg, true)); messageQueue = [];
+                updateQueue.forEach(updateMessageTicks); updateQueue = [];
+                
+            } catch (error) { console.error(error); }
         }
 
-        // === Message Rendering (Standard) ===
-        function renderMessage(msg, animate) {
-            const item = document.createElement('li');
-            const isSender = msg.senderEmail === myEmail;
+        async function fetchMessages(cursor) {
+            if (!hasMoreMessages || isLoadingMore) return { messages: [], nextCursor: null };
+            isLoadingMore = true;
+            try {
+                const res = await fetch(`/api/messages/${chatId}?cursor=${cursor}`);
+                const data = await res.json();
+                currentCursor = data.nextCursor; hasMoreMessages = data.nextCursor !== null;
+                isLoadingMore = false;
+                return data;
+            } catch (e) { isLoadingMore = false; return { messages: [], nextCursor: null }; }
+        }
+
+        function renderMessage(msg, animate, prepend = false) {
+            if (!msg.text && !msg.isDeleted) return;
+            if (msg.tempId && document.querySelector(`li[data-temp-id="${msg.tempId}"]`)) return;
             
+            const item = document.createElement('li');
+            item.setAttribute('data-message-id', msg.messageId);
+            if(msg.tempId) item.setAttribute('data-temp-id', msg.tempId);
+            
+            const isSender = msg.senderEmail === myEmail;
             let bubbleClass = isSender ? 'bubble-sender' : 'bubble-receiver';
             if (msg.isStarred) bubbleClass += ' starred';
             if (msg.isTruthMode) bubbleClass += ' is-truth';
             
-            // Truth Badge
-            const badge = msg.isTruthMode ? '<span class="truth-badge">🟢</span>' : '';
-            const time = new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const ticks = isSender ? getTicks(msg.status) : '';
+            const truthBadge = msg.isTruthMode ? '<span class="truth-badge">🟢</span>' : '';
+            const senderName = (isGroupChat && !isSender) ? `<div class="sender-name">${msg.senderName}</div>` : '';
             
-            item.className = `flex ${isSender ? 'justify-end' : 'justify-start'} mb-2`;
+            let replyHtml = '';
+            if (msg.replyTo && msg.replyTo.text) {
+                replyHtml = `<div class="bubble-reply"><div class="bubble-reply-sender">${msg.replyTo.senderName}</div><div class="bubble-reply-text">${msg.replyTo.text}</div></div>`;
+            }
+
+            item.className = `flex ${isSender ? 'justify-end' : 'justify-start'} mb-2 ${animate ? 'new-message' : ''}`;
             item.innerHTML = `
-                <div class="bubble ${bubbleClass}" data-msg-id="${msg.messageId}">
-                    ${isGroupChat && !isSender ? `<div class="sender-name">${msg.senderName}</div>` : ''}
-                    <p class="m-0 ${msg.isDeleted ? 'deleted-message' : ''}">${msg.isDeleted ? 'Deleted message' : msg.text}</p>
-                    <div class="bubble-meta">
-                        ${badge} <span class="star-icon">⭐</span> <span>${time}</span>
+                <div class="flex items-center">
+                    <div class="bubble ${bubbleClass}">
+                        ${senderName} ${replyHtml}
+                        <p class="m-0 ${msg.isDeleted ? 'deleted-message' : ''}">${msg.isDeleted ? 'Deleted message' : msg.text}</p>
+                        <div class="bubble-meta">
+                            ${truthBadge} <span class="star-icon">⭐</span> <span>${formatTime(msg.timestamp)}</span> ${ticks}
+                        </div>
                     </div>
                 </div>
             `;
-            
-            // Context Menu Events
+
             if (!msg.isDeleted) {
                 const bubble = item.querySelector('.bubble');
                 bubble.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    openContextMenu(e, msg);
+                    e.preventDefault(); openContextMenu(e, msg.messageId, isSender, bubble, msg.text, msg.senderName, msg.isTruthMode);
                 });
+                // Mobile Long Press
+                let timer;
+                bubble.addEventListener('touchstart', (e) => { timer = setTimeout(() => { openContextMenu(e, msg.messageId, isSender, bubble, msg.text, msg.senderName, msg.isTruthMode); }, 500); });
+                bubble.addEventListener('touchend', () => clearTimeout(timer));
             }
-            messages.appendChild(item);
-            if (animate) messages.scrollTop = messages.scrollHeight;
+
+            if (prepend) messages.insertBefore(item, messages.firstChild);
+            else messages.appendChild(item);
+            if (!prepend && (animate || isLoading)) messages.scrollTop = messages.scrollHeight;
         }
 
-        // === Truth Mode Toggle ===
+        function updateMessageTicks(msgUpdate) {
+            const item = document.querySelector(`li[data-message-id="${msgUpdate.messageId}"]`);
+            if (item) {
+                const meta = item.querySelector('.bubble-meta');
+                // Re-render meta content properly to include ticks
+                const bubble = item.querySelector('.bubble');
+                const isTruth = bubble.classList.contains('is-truth');
+                const isStarred = bubble.classList.contains('starred');
+                const timeSpan = meta.querySelector('span:nth-last-child(2)') || meta.querySelector('span'); // Approximate
+                
+                // Simplest way: recreate meta HTML
+                let content = '';
+                if(isTruth) content += '<span class="truth-badge" style="display:inline;">🟢</span> ';
+                if(isStarred) content += '<span class="star-icon" style="display:inline;color:#fbbf24;margin-right:4px;">⭐</span> ';
+                content += `<span>${timeSpan ? timeSpan.textContent : ''}</span> `;
+                content += getTicks(msgUpdate.status);
+                meta.innerHTML = content;
+            }
+        }
+
+        // ... (Baaki ke event listeners: form submit, scroll, etc. same as before) ...
+        
         truthModeBtn.addEventListener('click', () => {
             isTruthModeActive = !isTruthModeActive;
             const icon = truthModeBtn.querySelector('span');
-            if (isTruthModeActive) {
-                icon.textContent = '🔒';
-                truthModeBtn.classList.add('text-green-500');
-                showToast('Truth Mode ON');
-            } else {
-                icon.textContent = '🔓';
-                truthModeBtn.classList.remove('text-green-500');
-                showToast('Truth Mode OFF');
-            }
+            if (isTruthModeActive) { icon.textContent = '🔒'; truthModeBtn.classList.add('text-green-500'); showToast('Truth Mode ON'); }
+            else { icon.textContent = '🔓'; truthModeBtn.classList.remove('text-green-500'); showToast('Truth Mode OFF'); }
         });
 
-        // === Sending Messages ===
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             const text = input.value.trim();
-            if (text && chatId) {
-                const tempId = Date.now().toString();
-                const msgData = {
-                    messageId: tempId, senderEmail: myEmail, text: text,
-                    timestamp: Date.now(), status: 'sending', isTruthMode: isTruthModeActive
-                };
+            if (text && chatId && !isBlocked) {
+                const tempId = Date.now().toString() + myEmail;
+                const msgData = { messageId: tempId, tempId, senderEmail: myEmail, text, timestamp: Date.now(), status: 'sending', isTruthMode: isTruthModeActive, replyTo: currentReplyTo };
                 renderMessage(msgData, true);
-                socket.emit('send message', {
-                    receiverId: chatId, text: text, isTruthMode: isTruthModeActive
-                });
-                input.value = '';
-                
-                // Reset Truth Mode
+                socket.emit('send message', { receiverId: chatId, text, tempId, replyTo: currentReplyTo, isTruthMode: isTruthModeActive });
+                socket.emit('stop typing', { chatId: chatId });
+                input.value = ''; currentReplyTo = null; replyPreview.classList.add('hidden');
                 if (isTruthModeActive) truthModeBtn.click();
             }
         });
 
-        // === Listeners ===
-        socket.on('new message', (msg) => {
-            if (msg.senderEmail !== myEmail) renderMessage(msg, true);
-        });
-
-        // Menu & Context Logic
-        function openContextMenu(e, msg) {
-            currentContextMenuMsgId = msg.messageId;
-            // Logic to show menu... (Simplified for brevity)
-            contextMenu.style.display = 'block';
-            contextMenu.style.left = (e.pageX - 50) + 'px';
-            contextMenu.style.top = (e.pageY - 50) + 'px';
-            contextMenuOverlay.classList.remove('hidden');
-            
-            // Hide delete if Truth Mode
-            if (msg.isTruthMode) {
-                document.getElementById('ctx-delete-me').style.display = 'none';
-                document.getElementById('ctx-delete-everyone').style.display = 'none';
-            } else {
-                document.getElementById('ctx-delete-me').style.display = 'block';
+        messages.addEventListener('scroll', async () => {
+            if (messages.scrollTop === 0 && hasMoreMessages && !isLoadingMore) {
+                const oldH = messages.scrollHeight;
+                const data = await fetchMessages(currentCursor);
+                data.messages.forEach(msg => renderMessage(msg, false, true));
+                messages.scrollTop = messages.scrollHeight - oldH;
             }
-        }
-        
-        contextMenuOverlay.addEventListener('click', () => {
-            contextMenu.style.display = 'none';
-            contextMenuOverlay.classList.add('hidden');
         });
-        
-        menuBtn.addEventListener('click', () => {
-            const d = document.getElementById('menu-dropdown');
-            d.classList.toggle('hidden');
+
+        socket.on('new message', (msg) => {
+            if(msg.senderEmail === myEmail && msg.tempId) {
+                const tempLi = document.querySelector(`li[data-temp-id="${msg.tempId}"]`);
+                if(tempLi) {
+                    tempLi.setAttribute('data-message-id', msg.messageId);
+                    // Update ticks for self message confirmation
+                    updateMessageTicks({messageId: msg.messageId, status: 'sent'});
+                }
+            } else if (msg.senderEmail !== myEmail) {
+                renderMessage(msg, true);
+                socket.emit('mark messages seen', { chatId: chatId });
+            }
         });
-        
-        function updateBlockUI(blocked) {
-             blockBtn.textContent = blocked ? 'Unblock' : 'Block';
-             input.disabled = blocked;
+        socket.on('messages updated', (msgs) => msgs.forEach(updateMessageTicks));
+
+        // Menu Logic
+        function openContextMenu(e, msgId, isSender, bubble, text, sender, isTruth) {
+            currentContextMenuMsgId = msgId; currentContextMenuBubble = bubble;
+            currentReplyTo = { messageId: msgId, text: text, senderName: isSender ? "You" : sender };
+            
+            const delMe = document.getElementById('ctx-delete-me');
+            const delAll = document.getElementById('ctx-delete-everyone');
+            
+            if (isTruth) { delMe.style.display = 'none'; delAll.style.display = 'none'; }
+            else { delMe.style.display = 'block'; delAll.style.display = isSender ? 'block' : 'none'; }
+            
+            contextMenu.style.display = 'block';
+            contextMenuOverlay.classList.remove('hidden');
+            // Position
+            const x = e.touches ? e.touches[0].pageX : e.pageX;
+            const y = e.touches ? e.touches[0].pageY : e.pageY;
+            contextMenu.style.left = (x - 60) + 'px'; contextMenu.style.top = (y - 50) + 'px';
         }
 
+        document.getElementById('context-menu-overlay').addEventListener('click', () => {
+            contextMenu.style.display = 'none'; contextMenuOverlay.classList.add('hidden');
+        });
+        
+        // Attach basic button listeners (reply, copy, etc.)
+        document.getElementById('ctx-reply').onclick = () => {
+            document.getElementById('reply-sender').textContent = `Replying to ${currentReplyTo.senderName}`;
+            document.getElementById('reply-text').textContent = currentReplyTo.text;
+            replyPreview.classList.remove('hidden');
+            input.focus();
+            contextMenuOverlay.click();
+        };
+        document.getElementById('cancel-reply-btn').onclick = () => { currentReplyTo = null; replyPreview.classList.add('hidden'); };
+        document.getElementById('ctx-copy').onclick = () => {
+            navigator.clipboard.writeText(currentReplyTo.text); showToast('Copied'); contextMenuOverlay.click();
+        };
+        document.getElementById('ctx-delete-me').onclick = () => { socket.emit('delete for me', { messageId: currentContextMenuMsgId }); contextMenuOverlay.click(); };
+        document.getElementById('ctx-delete-everyone').onclick = () => { socket.emit('delete message', { messageId: currentContextMenuMsgId }); contextMenuOverlay.click(); };
+        
+        document.getElementById('menu-btn').onclick = () => document.getElementById('menu-dropdown').classList.toggle('hidden');
+        
+        function updateBlockUI(b) { blockBtn.textContent = b ? 'Unblock' : 'Block'; input.disabled = b; }
+        
+        // Start
         loadChatData();
     </script>
 </body>
