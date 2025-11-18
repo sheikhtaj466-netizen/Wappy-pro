@@ -133,8 +133,11 @@ const messageSchema = new mongoose.Schema({
     isDeleted: { type: Boolean, default: false },
     deletedBy: [String],
     replyTo: { type: replySchema, default: null },
-    isStarred: { type: Boolean, default: false }
+    isStarred: { type: Boolean, default: false },
+    // === NAYA: Truth Mode Feature ===
+    isTruthMode: { type: Boolean, default: false }
 });
+
 // === NAYA: Aapki file mein ye line missing thi ===
 const Message = mongoose.model('Message', messageSchema);
 
@@ -777,9 +780,11 @@ io.on('connection', async (socket) => {
         console.log(`[Wappy Socket] ${userEmail} auto-joined group room: ${group.groupId}`);
     });
   });
-
-  socket.on('send message', async (data) => {
-    const { receiverId, text, tempId, replyTo } = data; 
+// === NAYA: 'send message' (Truth Mode ke saath) ===
+socket.on('send message', async (data) => {
+    // KADAM 1: 'isTruthMode' ko data se nikalo (default 'false' rakho)
+    const { receiverId, text, tempId, replyTo, isTruthMode = false } = data; 
+    
     if (!text || text.trim() === "") { return; }
     const trimmedText = text.trim();
     const senderEmail = userEmail;
@@ -787,10 +792,21 @@ io.on('connection', async (socket) => {
     const senderName = (senderUser && senderUser.displayName) ? senderUser.displayName : senderEmail.split('@')[0];
 
     const messageData = {
-      messageId: nanoid(), senderEmail, senderName: senderName,
-      receiverEmail: null, receiverGroupId: null, text: trimmedText,
-      timestamp: Date.now(), status: 'sent', isDeleted: false,
-      deletedBy: [], replyTo: replyTo || null, isStarred: false, tempId: tempId
+      messageId: nanoid(), 
+      senderEmail, 
+      senderName: senderName,
+      receiverEmail: null, 
+      receiverGroupId: null, 
+      text: trimmedText,
+      timestamp: Date.now(), 
+      status: 'sent', 
+      isDeleted: false,
+      deletedBy: [], 
+      replyTo: replyTo || null, 
+      isStarred: false, 
+      tempId: tempId,
+      // KADAM 2: 'isTruthMode' ko database object mein add karo
+      isTruthMode: isTruthMode 
     };
     
     let roomName = receiverId;
@@ -817,15 +833,62 @@ io.on('connection', async (socket) => {
         });
         messageData.status = 'delivered';
     }
+    
+    // KADAM 3: Naya message (jismein isTruthMode hai) save karo
     const newMessage = new Message(messageData);
     await newMessage.save();
+    
+    // KADAM 4: Poora naya 'messageData' (truth mode ke saath) client ko bhejo
     io.to(roomName).emit('new message', messageData);
+    
     socketsToNotify.forEach(socketId => {
         if(socketId) io.to(socketId).emit('chat list update');
     });
-    console.log(`[Wappy Socket] Message sent to room ${roomName}: ${trimmedText}`);
+    console.log(`[Wappy Socket] Message sent to room ${roomName}: ${trimmedText} (TruthMode: ${isTruthMode})`);
   });
-  
+// === NAYA: 'delete message' (Truth Mode check ke saath) ===
+socket.on('delete message', async (data) => {
+    try {
+      const { messageId } = data;
+      const message = await Message.findOne({ messageId: messageId });
+      
+      // Check karo ki message hai ya nahi
+      if (!message) {
+        return socket.emit('send error', { message: 'Message not found.' });
+      }
+      
+      // Check karo ki message bhej ne waala hi delete kar raha hai
+      if (message.senderEmail !== userEmail) {
+        return socket.emit('send error', { message: 'You can only delete your own messages.' });
+      }
+      
+      // === NAYA: TRUTH MODE CHECK ===
+      // Agar message Truth Mode mein tha, toh delete mat karo
+      if (message.isTruthMode) {
+        console.log(`[Wappy] DENIED delete for Truth Mode message: ${messageId}`);
+        return socket.emit('send error', { message: 'This is a Truth Message and cannot be deleted.' });
+      }
+      // === END NAYA CHECK ===
+
+      // Agar normal message hai, toh delete kar do
+      message.text = "This message was deleted"; 
+      message.isDeleted = true; 
+      message.replyTo = null; // Reply bhi hata do
+      await message.save();
+      
+      let roomName = '';
+      if (message.receiverGroupId) { roomName = message.receiverGroupId; } 
+      else { roomName = getRoomName(message.senderEmail, message.receiverEmail); }
+      
+      io.to(roomName).emit('message deleted', { messageId: messageId, text: message.text });
+      io.to(roomName).emit('chat list update');
+      
+    } catch (error) { 
+        console.error('[Wappy Error] Delete message error:', error); 
+        socket.emit('send error', { message: 'Server error while deleting.' });
+    }
+  });
+
   socket.on('delete message', async (data) => {
     try {
       const { messageId } = data;
