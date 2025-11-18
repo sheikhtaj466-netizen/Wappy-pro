@@ -19,89 +19,35 @@
     <link rel="stylesheet" href="style.css">
     
     <style>
-        /* NAYA: Body padding */
-        body {
-            padding-bottom: 70px;
-        }
-        .dark body {
-            background-color: #121212;
-        }
+        body { padding-bottom: 70px; }
+        .dark body { background-color: #121212; }
     
-        /* Tab buttons */
         .tab-btn {
-            padding: 10px 16px;
-            cursor: pointer;
-            background-color: transparent;
-            border: none;
-            border-bottom: 3px solid transparent;
-            font-weight: 500;
-            color: #6B7280; /* Gray */
+            padding: 10px 16px; cursor: pointer; background-color: transparent;
+            border: none; border-bottom: 3px solid transparent;
+            font-weight: 500; color: #6B7280;
         }
-        .dark .tab-btn {
-            color: #9CA3AF; /* Dark Gray */
-        }
+        .dark .tab-btn { color: #9CA3AF; }
         
-        /* Active Tab */
-        .tab-btn.active {
-            color: #22c55e; /* Green */
-            border-bottom-color: #22c55e;
-        }
-        .dark .tab-btn.active {
-            color: #4ade80; /* Light Green */
-            border-bottom-color: #4ade80;
-        }
+        .tab-btn.active { color: #22c55e; border-bottom-color: #22c55e; }
+        .dark .tab-btn.active { color: #4ade80; border-bottom-color: #4ade80; }
 
-        /* Tab Content */
-        .tab-content {
-            display: none; /* Shuru mein sab chupe hue */
-            padding-top: 20px;
-        }
-        .tab-content.active {
-            display: block; /* Active waala dikhao */
-        }
+        .tab-content { display: none; padding-top: 20px; }
+        .tab-content.active { display: block; }
         
-        /* Danger zone button */
-        .btn-danger {
-            background-color: #ef4444; /* Red */
-            color: white;
-        }
-        .btn-danger:hover {
-            background-color: #dc2626;
-        }
+        .btn-danger { background-color: #ef4444; color: white; }
+        .btn-danger:hover { background-color: #dc2626; }
         
-        /* NAYA: Bottom Tab Bar */
-        .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            z-index: 10;
-        }
+        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; }
         
-        /* NAYA: Toast */
         #toast {
-            visibility: hidden;
-            min-width: 250px;
-            background-color: #333;
-            color: #fff;
-            text-align: center;
-            border-radius: 4px;
-            padding: 16px;
-            position: fixed;
-            z-index: 100;
-            left: 50%;
-            transform: translateX(-50%);
-            bottom: 80px; /* Bottom nav se upar */
-            transition: visibility 0s, opacity 0.5s linear;
-            opacity: 0;
+            visibility: hidden; min-width: 250px; background-color: #333; color: #fff;
+            text-align: center; border-radius: 4px; padding: 16px;
+            position: fixed; z-index: 100; left: 50%; transform: translateX(-50%);
+            bottom: 80px; transition: visibility 0s, opacity 0.5s linear; opacity: 0;
         }
-        #toast.show {
-            visibility: visible;
-            opacity: 1;
-        }
-        .hidden {
-            display: none;
-        }
+        #toast.show { visibility: visible; opacity: 1; }
+        .hidden { display: none; }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900">
@@ -171,13 +117,26 @@
         <div id="appearance" class="tab-content">
             <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
                 <h3 class="text-2xl font-bold text-gray-800 dark:text-white mb-6">Appearance</h3>
-                <div class="w-full flex justify-between items-center">
+                
+                <div class="w-full flex justify-between items-center mb-6">
                     <span class="text-xl font-bold text-gray-800 dark:text-white">Dark Mode 🌗</span>
                     <button id="theme-toggle" class="relative inline-flex items-center h-6 rounded-full w-11 transition-colors bg-gray-300 dark:bg-green-500">
                         <span id="theme-toggle-knob" class="inline-block w-4 h-4 transform bg-white rounded-full transition-transform translate-x-1 dark:translate-x-6"></span>
                     </button>
                 </div>
-            </div>
+
+                <div class="w-full flex justify-between items-center pt-6 border-t dark:border-gray-700">
+                    <span class="text-xl font-bold text-gray-800 dark:text-white">Current Mood 😌</span>
+                    <select id="mood-select" class="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-green-500">
+                        <option value="default">Default (None)</option>
+                        <option value="happy">😊 Happy (Yellow)</option>
+                        <option value="sad">😔 Sad (Blue)</option>
+                        <option value="angry">😡 Angry (Red)</option>
+                        <option value="love">😍 Love (Pink)</option>
+                        <option value="cool">😎 Cool (Cyan)</option>
+                    </select>
+                </div>
+                </div>
         </div>
         
         <div id="account" class="tab-content">
@@ -208,28 +167,21 @@
         </a>
     </footer>
     
-    <div id="toast" class="hidden fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg transition-opacity duration-300 z-30"></div>
+    <div id="toast"></div>
     <script>
         const avatarImg = document.getElementById('avatar-img');
         const displayNameEl = document.getElementById('display-name');
         const emailEl = document.getElementById('email');
         const toast = document.getElementById('toast');
         
-        // Privacy elements
         const savePrivacyBtn = document.getElementById('save-privacy-btn');
-        const lastSeenRadios = document.querySelectorAll('input[name="privacy_lastSeen"]');
-        const avatarRadios = document.querySelectorAll('input[name="privacy_avatar"]');
-        
-        // Theme elements
         const themeToggle = document.getElementById('theme-toggle');
-        const themeToggleKnob = document.getElementById('theme-toggle-knob');
-        
-        // Tab elements
         const tabButtons = document.querySelectorAll('.tab-btn');
         const tabContents = document.querySelectorAll('.tab-content');
-        
-        // Account elements
         const deleteAccountBtn = document.getElementById('delete-account-btn');
+        
+        // NAYA: Mood Element
+        const moodSelect = document.getElementById('mood-select');
 
         function showToast(message) {
             toast.textContent = message;
@@ -250,17 +202,15 @@
                 displayNameEl.textContent = me.displayName;
                 emailEl.textContent = me.email;
 
-                if (me.avatarUrl) {
-                    avatarImg.src = me.avatarUrl;
-                } else {
-                    avatarImg.src = `https://ui-avatars.com/api/?name=${me.displayName.charAt(0)}&background=random&size=128`;
-                }
+                if (me.avatarUrl) { avatarImg.src = me.avatarUrl; } 
+                else { avatarImg.src = `https://ui-avatars.com/api/?name=${me.displayName.charAt(0)}&background=random&size=128`; }
                 
-                if (me.privacy && me.privacy.lastSeen) {
-                    document.querySelector(`input[name="privacy_lastSeen"][value="${me.privacy.lastSeen}"]`).checked = true;
-                }
-                if (me.privacy && me.privacy.avatar) {
-                    document.querySelector(`input[name="privacy_avatar"][value="${me.privacy.avatar}"]`).checked = true;
+                if (me.privacy && me.privacy.lastSeen) { document.querySelector(`input[name="privacy_lastSeen"][value="${me.privacy.lastSeen}"]`).checked = true; }
+                if (me.privacy && me.privacy.avatar) { document.querySelector(`input[name="privacy_avatar"][value="${me.privacy.avatar}"]`).checked = true; }
+                
+                // NAYA: Set Saved Mood
+                if (me.currentMood) {
+                    moodSelect.value = me.currentMood;
                 }
 
             } catch (error) {
@@ -269,6 +219,26 @@
             }
         });
         
+        // === NAYA: Mood Change Logic ===
+        moodSelect.addEventListener('change', async () => {
+            const selectedMood = moodSelect.value;
+            try {
+                const response = await fetch('/api/update-mood', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mood: selectedMood })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showToast(`Mood updated to ${selectedMood}!`);
+                } else {
+                    showToast(`Error: ${result.message}`);
+                }
+            } catch (error) {
+                showToast('Server error while updating mood.');
+            }
+        });
+
         // === Privacy Settings Logic ===
         savePrivacyBtn.addEventListener('click', async () => {
             const newLastSeen = document.querySelector('input[name="privacy_lastSeen"]:checked').value;
@@ -277,20 +247,11 @@
                 const response = await fetch('/api/update-privacy', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        lastSeen: newLastSeen,
-                        avatar: newAvatar
-                    })
+                    body: JSON.stringify({ lastSeen: newLastSeen, avatar: newAvatar })
                 });
                 const result = await response.json();
-                if (response.ok) {
-                    showToast(result.message);
-                } else {
-                    showToast(`Error: ${result.message}`);
-                }
-            } catch (error) {
-                showToast('Server error while saving.');
-            }
+                if (response.ok) { showToast(result.message); } else { showToast(`Error: ${result.message}`); }
+            } catch (error) { showToast('Server error while saving.'); }
         });
         
         // === Theme Toggle Logic ===
@@ -304,9 +265,7 @@
             button.addEventListener('click', () => {
                 tabButtons.forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
-                
                 tabContents.forEach(content => content.classList.remove('active'));
-                
                 const tabId = button.dataset.tab;
                 document.getElementById(tabId).classList.add('active');
             });
@@ -314,11 +273,7 @@
         
         // === Account Logic ===
         deleteAccountBtn.addEventListener('click', () => {
-            if (confirm('DANGER: Are you sure you want to delete your account? This cannot be undone.')) {
-                if (confirm('FINAL WARNING: This will delete all your messages and contacts. Continue?')) {
-                    showToast('Feature not built yet.');
-                }
-            }
+            if (confirm('DANGER: Are you sure?')) { showToast('Feature not built yet.'); }
         });
     </script>
 </body>

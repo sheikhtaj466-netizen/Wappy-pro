@@ -86,6 +86,15 @@ const userSchema = new mongoose.Schema({
     avatarUrl: { type: String, default: "" },
     status: { type: String, default: "Offline" },
     lastSeen: { type: Number, default: 0 },
+    
+    // === NAYA: Mood Feature ===
+    currentMood: { 
+        type: String, 
+        enum: ['default', 'happy', 'sad', 'angry', 'love', 'cool'], 
+        default: 'default' 
+    },
+    // === END NAYA ===
+
     privacy: {
         lastSeen: { type: String, default: "everyone" },
         avatar: { type: String, default: "everyone" }
@@ -239,22 +248,34 @@ async function canSeeInfo(requesterEmail, targetUser) {
     return { canSeeAvatar, canSeeLastSeen };
 }
 // index.js (FINAL - NAYA FRIEND REQUEST SYSTEM - Part 2)
+// === NAYA: User Info Route (Mood ke saath) ===
 app.get('/api/userinfo/:email', protectRoute, async (req, res) => {
   try {
     const friendEmail = req.params.email;
     const ownerEmail = req.user.email;
+    
     const contact = await Contact.findOne({ ownerEmail: ownerEmail, friendEmail: friendEmail }).lean();
     const friendUser = await User.findOne({ email: friendEmail }).lean();
+    
     if (contact && friendUser) {
       const { canSeeAvatar, canSeeLastSeen } = await canSeeInfo(ownerEmail, friendUser);
-      res.json({ email: contact.friendEmail, displayName: contact.nickname,
+      
+      res.json({ 
+        email: contact.friendEmail, 
+        displayName: contact.nickname,
         status: canSeeLastSeen ? friendUser.status : 'Offline',
         lastSeen: canSeeLastSeen ? friendUser.lastSeen : 0,
         avatarUrl: canSeeAvatar ? friendUser.avatarUrl : '',
-        isBlocked: contact.isBlocked
+        isBlocked: contact.isBlocked,
+        // NAYA: Mood data bhejo (agar nahi hai toh 'default')
+        currentMood: friendUser.currentMood || 'default' 
       });
-    } else { res.status(404).json({ message: 'Contact not found' }); }
-  } catch (error) { res.status(500).json({ message: 'Server error' }); }
+    } else { 
+        res.status(404).json({ message: 'Contact not found' }); 
+    }
+  } catch (error) { 
+      res.status(500).json({ message: 'Server error' }); 
+  }
 });
 
 app.get('/api/groupinfo/:groupId', protectRoute, async (req, res) => {
@@ -405,6 +426,29 @@ app.post('/api/update-privacy', protectRoute, async (req, res) => {
         console.log(`[Wappy] Privacy updated for ${myEmail}`);
         res.json({ message: "Privacy settings updated" });
     } catch (error) { console.error('[Wappy Error] Update privacy error:', error); res.status(500).json({ message: "Server error" }); }
+});
+// === NAYA: Update Mood Route ===
+app.post('/api/update-mood', protectRoute, async (req, res, next) => {
+    try {
+        const { mood } = req.body;
+        const myEmail = req.user.email;
+        
+        // Allowed moods check karo
+        const validMoods = ['default', 'happy', 'sad', 'angry', 'love', 'cool'];
+        if (!validMoods.includes(mood)) {
+            return res.status(400).json({ message: "Invalid mood selected" });
+        }
+        
+        // Database update karo
+        await User.updateOne({ email: myEmail }, { $set: { currentMood: mood } });
+        
+        console.log(`[Wappy] Mood updated for ${myEmail}: ${mood}`);
+        res.json({ message: "Mood updated successfully", mood: mood });
+        
+    } catch (error) {
+        console.error('[Wappy Error] Update mood error:', error);
+        next(error);
+    }
 });
 
 app.post('/api/create-group', protectRoute, async (req, res) => {
