@@ -825,11 +825,10 @@ io.on('connection', async (socket) => {
         console.log(`[Wappy Socket] ${userEmail} auto-joined group room: ${group.groupId}`);
     });
   });
-// === NAYA: 'send message' (Truth Mode ke saath) ===
-  // === UPDATED: 'send message' (Truth Mode + Puzzle Mode) ===
+  // === NAYA: 'send message' (Puzzle Type ke saath) ===
   socket.on('send message', async (data) => {
-    // KADAM 1: 'isTruthMode' aur 'isPuzzle' nikalo
-    const { receiverId, text, tempId, replyTo, isTruthMode = false, isPuzzle = false } = data; 
+    // KADAM 1: 'puzzleType' ko data se nikalo (default 'none')
+    const { receiverId, text, tempId, replyTo, isTruthMode = false, puzzleType = 'none' } = data; 
     
     if (!text || text.trim() === "") { return; }
     const trimmedText = text.trim();
@@ -852,8 +851,8 @@ io.on('connection', async (socket) => {
       isStarred: false, 
       tempId: tempId,
       isTruthMode: isTruthMode,
-      // KADAM 2: Puzzle status save karo
-      isPuzzle: isPuzzle 
+      // KADAM 2: Puzzle type database mein save karo
+      puzzleType: puzzleType 
     };
     
     let roomName = receiverId;
@@ -889,7 +888,7 @@ io.on('connection', async (socket) => {
     socketsToNotify.forEach(socketId => {
         if(socketId) io.to(socketId).emit('chat list update');
     });
-    console.log(`[Wappy Socket] Message sent: ${trimmedText} (Truth:${isTruthMode}, Puzzle:${isPuzzle})`);
+    console.log(`[Wappy Socket] Message sent: ${trimmedText} (Truth:${isTruthMode}, Puzzle:${puzzleType})`);
   });
 
 // === NAYA: 'delete message' (Truth Mode check ke saath) ===

@@ -49,6 +49,7 @@
         .bubble-meta { font-size: 0.7rem; color: #6B7280; text-align: right; margin-top: 4px; display: flex; justify-content: flex-end; align-items: center; }
         .dark .bubble-meta { color: #8696A0; }
         
+        /* Context Menu */
         #context-menu { position: absolute; background-color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 50; display: none; }
         .dark #context-menu { background-color: #202C33; }
         #context-menu button { display: block; width: 100%; padding: 12px 16px; background: none; border: none; text-align: left; color: #0F172A; font-size: 1rem; }
@@ -64,29 +65,21 @@
         .star-icon { font-size: 0.7rem; color: #fbbf24; margin-right: 4px; display: none; }
         .bubble.starred .star-icon { display: inline; }
         
-        /* === NAYA: PUZZLE / SPOILER STYLES === */
-        .spoiler-blur {
-            filter: blur(6px);
-            cursor: pointer;
-            background-color: #ccc;
-            color: transparent;
-            border-radius: 4px;
-            padding: 0 4px;
-            user-select: none;
-            transition: all 0.3s ease;
-        }
-        .spoiler-blur:hover {
-            filter: blur(4px); /* Hover par thoda saaf dikhe */
-        }
-        .spoiler-revealed {
-            filter: none;
-            background-color: transparent;
-            color: inherit;
-            cursor: text;
-            user-select: text;
-        }
+        /* === NAYA: PUZZLE STYLES === */
+        /* 1. Blur */
+        .puzzle-blur { filter: blur(6px); background-color: #ccc; color: transparent; cursor: pointer; user-select: none; transition: all 0.5s ease; border-radius: 4px; }
+        .puzzle-blur.solved { filter: none; background-color: transparent; color: inherit; }
+        /* 2. Scramble */
+        .puzzle-scramble { font-family: monospace; letter-spacing: 2px; background-color: #eee; color: #333; cursor: pointer; border-radius: 4px; padding: 2px 4px; border: 1px dashed #999; }
+        .dark .puzzle-scramble { background-color: #333; color: #ddd; }
+        .puzzle-scramble.solved { font-family: inherit; letter-spacing: normal; background: transparent; border: none; }
+        /* 3. Hidden */
+        .puzzle-hidden { opacity: 0; cursor: pointer; transition: opacity 1.5s ease-in; background-color: #f0f0f0; border-radius: 4px; }
+        .dark .puzzle-hidden { background-color: #333; }
+        .puzzle-hidden.solved { opacity: 1; background: transparent; }
+        /* Icon */
         .puzzle-icon { font-size: 0.8rem; margin-right: 4px; display: none; }
-        .bubble.is-puzzle .puzzle-icon { display: inline; }
+        .bubble.has-puzzle .puzzle-icon { display: inline; }
 
         .hidden { display: none; }
         #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 4px; padding: 16px; position: fixed; z-index: 100; left: 50%; transform: translateX(-50%); bottom: 30px; transition: visibility 0s, opacity 0.5s linear; opacity: 0; }
@@ -176,8 +169,10 @@
         // Modes
         const truthModeBtn = document.getElementById('truth-mode-btn');
         let isTruthModeActive = false;
-        const puzzleBtn = document.getElementById('puzzle-btn'); // NAYA
-        let isPuzzleActive = false; // NAYA
+        
+        // === NAYA: PUZZLE VARS ===
+        const puzzleBtn = document.getElementById('puzzle-btn');
+        let activePuzzleType = 'none'; // 'none', 'blur', 'scramble', 'hidden'
         
         const contextMenuOverlay = document.getElementById('context-menu-overlay');
         const contextMenu = document.getElementById('context-menu');
@@ -277,24 +272,35 @@
             let bubbleClass = isSender ? 'bubble-sender' : 'bubble-receiver';
             if (msg.isStarred) bubbleClass += ' starred';
             if (msg.isTruthMode) bubbleClass += ' is-truth';
-            if (msg.isPuzzle) bubbleClass += ' is-puzzle'; // NAYA
-
+            // NAYA: Puzzle class
+            if (msg.puzzleType && msg.puzzleType !== 'none') bubbleClass += ' has-puzzle';
+            
             const ticks = isSender ? getTicks(msg.status) : '';
             const truthBadge = msg.isTruthMode ? '<span class="truth-badge">🟢</span>' : '';
-            const puzzleIcon = msg.isPuzzle ? '<span class="puzzle-icon">🧩</span>' : ''; // NAYA
             
+            // NAYA: Puzzle Icon Logic
+            let pIcon = '';
+            if (msg.puzzleType === 'blur') pIcon = '🧩';
+            else if (msg.puzzleType === 'scramble') pIcon = '🔠';
+            else if (msg.puzzleType === 'hidden') pIcon = '🔎';
+            const puzzleIconSpan = (msg.puzzleType && msg.puzzleType !== 'none') ? `<span class="puzzle-icon">${pIcon}</span>` : '';
+
             // === NAYA: PUZZLE TEXT LOGIC ===
             let messageTextHTML = '';
             if (msg.isDeleted) {
                 messageTextHTML = `<p class="m-0 deleted-message">Deleted message</p>`;
-            } else if (msg.isPuzzle) {
-                // Agar Puzzle hai, toh blur class lagao aur onclick remove karo
-                messageTextHTML = `<p class="m-0 spoiler-blur" onclick="this.classList.remove('spoiler-blur'); this.classList.add('spoiler-revealed')">${msg.text}</p>`;
+            } else if (msg.puzzleType === 'blur') {
+                messageTextHTML = `<p class="m-0 puzzle-blur" onclick="this.classList.add('solved')">${msg.text}</p>`;
+            } else if (msg.puzzleType === 'hidden') {
+                messageTextHTML = `<p class="m-0 puzzle-hidden" onclick="this.classList.add('solved')">${msg.text}</p>`;
+            } else if (msg.puzzleType === 'scramble') {
+                const scrambled = msg.text.split('').sort(() => 0.5 - Math.random()).join('');
+                messageTextHTML = `<p class="m-0 puzzle-scramble" data-original="${msg.text}" onclick="this.innerText = this.getAttribute('data-original'); this.classList.add('solved')">${scrambled}</p>`;
             } else {
                 messageTextHTML = `<p class="m-0">${msg.text}</p>`;
             }
-            // === END NAYA ===
-            
+            // === END ===
+
             const senderName = (isGroupChat && !isSender) ? `<div class="sender-name">${msg.senderName}</div>` : '';
             let replyHtml = '';
             if (msg.replyTo && msg.replyTo.text) {
@@ -308,7 +314,7 @@
                         ${senderName} ${replyHtml}
                         ${messageTextHTML}
                         <div class="bubble-meta">
-                            ${puzzleIcon} ${truthBadge} <span class="star-icon">⭐</span> <span>${formatTime(msg.timestamp)}</span> ${ticks}
+                            ${puzzleIconSpan} ${truthBadge} <span class="star-icon">⭐</span> <span>${formatTime(msg.timestamp)}</span> ${ticks}
                         </div>
                     </div>
                 </div>
@@ -332,16 +338,14 @@
         function updateMessageTicks(msgUpdate) {
             const item = document.querySelector(`li[data-message-id="${msgUpdate.messageId}"]`);
             if (item) {
-                // Update ticks logic (simplified)
                 const meta = item.querySelector('.bubble-meta');
                 const ticks = meta.querySelector('span:last-child');
                 if(ticks) ticks.outerHTML = getTicks(msgUpdate.status);
             }
         }
 
-        // Truth Mode Toggle
         truthModeBtn.addEventListener('click', () => {
-            if(isPuzzleActive) puzzleBtn.click(); // Puzzle band karo agar on hai
+            if(activePuzzleType !== 'none') puzzleBtn.click(); // Reset puzzle if Truth is on
             isTruthModeActive = !isTruthModeActive;
             const icon = truthModeBtn.querySelector('span');
             if (isTruthModeActive) { icon.textContent = '🔒'; truthModeBtn.classList.add('text-green-500'); showToast('Truth Mode ON'); }
@@ -350,17 +354,22 @@
 
         // === NAYA: Puzzle Mode Toggle ===
         puzzleBtn.addEventListener('click', () => {
-            if(isTruthModeActive) truthModeBtn.click(); // Truth mode band karo
-            isPuzzleActive = !isPuzzleActive;
-            if (isPuzzleActive) { 
-                puzzleBtn.classList.add('text-purple-500'); 
-                showToast('Puzzle Mode ON (Message will be hidden)'); 
-            } else { 
-                puzzleBtn.classList.remove('text-purple-500'); 
-                showToast('Puzzle Mode OFF'); 
+            if(isTruthModeActive) truthModeBtn.click(); // Reset truth if puzzle is on
+            
+            if (activePuzzleType === 'none') {
+                activePuzzleType = 'blur';
+                puzzleBtn.innerHTML = '<span>🧩</span>'; showToast('Puzzle: Blur'); puzzleBtn.classList.add('text-purple-500');
+            } else if (activePuzzleType === 'blur') {
+                activePuzzleType = 'scramble';
+                puzzleBtn.innerHTML = '<span>🔠</span>'; showToast('Puzzle: Scramble');
+            } else if (activePuzzleType === 'scramble') {
+                activePuzzleType = 'hidden';
+                puzzleBtn.innerHTML = '<span>🔎</span>'; showToast('Puzzle: Hidden');
+            } else {
+                activePuzzleType = 'none';
+                puzzleBtn.innerHTML = '<span>🧩</span>'; showToast('Puzzle Mode OFF'); puzzleBtn.classList.remove('text-purple-500');
             }
         });
-        // === END NAYA ===
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -369,23 +378,20 @@
                 const tempId = Date.now().toString() + myEmail;
                 const msgData = {
                     messageId: tempId, tempId, senderEmail: myEmail, text, timestamp: Date.now(), 
-                    status: 'sending', 
-                    isTruthMode: isTruthModeActive, 
-                    isPuzzle: isPuzzleActive, // NAYA
+                    status: 'sending', isTruthMode: isTruthModeActive, 
+                    puzzleType: activePuzzleType, // NAYA
                     replyTo: currentReplyTo
                 };
                 renderMessage(msgData, true);
                 socket.emit('send message', {
                     receiverId: chatId, text, tempId, replyTo: currentReplyTo, 
-                    isTruthMode: isTruthModeActive, 
-                    isPuzzle: isPuzzleActive // NAYA
+                    isTruthMode: isTruthModeActive, puzzleType: activePuzzleType // NAYA
                 });
                 socket.emit('stop typing', { chatId: chatId });
                 input.value = ''; currentReplyTo = null; replyPreview.classList.add('hidden');
                 
-                // Reset Modes
                 if (isTruthModeActive) truthModeBtn.click();
-                if (isPuzzleActive) puzzleBtn.click();
+                if (activePuzzleType !== 'none') puzzleBtn.click();
             }
         });
 
@@ -412,7 +418,6 @@
         });
         socket.on('messages updated', (msgs) => msgs.forEach(updateMessageTicks));
 
-        // Context Menu Logic (Same as before)
         function openContextMenu(e, msgId, isSender, bubble, text, sender, isTruth) {
             currentContextMenuMsgId = msgId; currentContextMenuBubble = bubble;
             currentReplyTo = { messageId: msgId, text: text, senderName: isSender ? "You" : sender };
@@ -432,7 +437,10 @@
         document.getElementById('ctx-copy').onclick = () => { navigator.clipboard.writeText(currentReplyTo.text); showToast('Copied'); contextMenuOverlay.click(); };
         document.getElementById('ctx-delete-me').onclick = () => { socket.emit('delete for me', { messageId: currentContextMenuMsgId }); contextMenuOverlay.click(); };
         document.getElementById('ctx-delete-everyone').onclick = () => { socket.emit('delete message', { messageId: currentContextMenuMsgId }); contextMenuOverlay.click(); };
-        document.getElementById('ctx-star').onclick = async () => { /* Star logic same as before */ contextMenuOverlay.click(); };
+        document.getElementById('ctx-star').onclick = async () => { 
+             // ... star logic ...
+             contextMenuOverlay.click(); 
+        };
         document.getElementById('menu-btn').onclick = () => document.getElementById('menu-dropdown').classList.toggle('hidden');
         function updateBlockUI(b) { blockBtn.textContent = b ? 'Unblock' : 'Block'; input.disabled = b; }
 
