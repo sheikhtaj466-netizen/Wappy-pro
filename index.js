@@ -533,6 +533,37 @@ app.post('/login', loginLimiter, async (req, res, next) => {
     if (!isMatch) { return res.status(400).send('Invalid email or password'); }
          // NAYA: 30 Din ki expiry
     const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+    // === NAYA: Native App Login Route (FOR MOBILE APP) ===
+app.post('/api/native/login', loginLimiter, async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email: email }).lean();
+    
+    if (!user) { return res.status(401).json({ message: 'Invalid email or password' }); }
+    
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) { return res.status(401).json({ message: 'Invalid email or password' }); }
+    
+    // 30 Din ka token
+    const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+    
+    console.log(`[Wappy Native] USER LOGGED IN: ${email}`);
+    
+    // Token JSON mein bhejo (Native App ke liye)
+    res.status(200).json({
+      message: 'Login successful!',
+      token: token,
+      user: {
+        email: user.email,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl
+      }
+    });
+    
+  } catch (error) { 
+    next(error); 
+  }
+});
     // === NAYA: Auto-Login / Restore Session Route ===
 app.post('/api/restore-session', async (req, res) => {
   try {
