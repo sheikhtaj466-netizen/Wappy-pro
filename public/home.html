@@ -20,7 +20,11 @@
     <link rel="stylesheet" href="style.css">
     
     <style>
-        body { padding-bottom: 70px; }
+        /* NAYA: Overscroll behavior disable karo taaki pull-to-refresh na ho */
+body { 
+    padding-bottom: 70px; 
+    overscroll-behavior-y: none; 
+}
         .dark body { background-color: #121212; }
         .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; }
         .pinned { background-color: #f0f2f5; }
@@ -327,6 +331,22 @@
         requestsModal.addEventListener('click', (e) => { if (e.target === requestsModal) { requestsModal.classList.add('hidden'); } });
         requestsList.addEventListener('click', handleRequestAction);
         searchInput.addEventListener('input', (e) => { clearTimeout(searchDebounceTimer); const query = e.target.value; searchDebounceTimer = setTimeout(() => { loadContacts(query); }, 300); });
+                // === NAYA: Pull-to-Refresh Disable ===
+        // Ye code 'loading' spinner ko rokega jab aap list ko kheenchenge
+        let touchStartY = 0;
+        document.addEventListener('touchstart', e => {
+            touchStartY = e.touches[0].clientY;
+        }, { passive: false });
+
+        document.addEventListener('touchmove', e => {
+            const touchY = e.touches[0].clientY;
+            const touchDiff = touchY - touchStartY;
+            
+            // Agar list sabse upar hai aur user neeche kheench raha hai
+            if (window.scrollY === 0 && touchDiff > 0) {
+                e.preventDefault(); // Refresh roko
+            }
+        }, { passive: false });
     </script>
 </body>
 </html>
