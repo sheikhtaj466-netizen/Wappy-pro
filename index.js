@@ -531,8 +531,16 @@ app.post('/login', loginLimiter, async (req, res, next) => {
     if (!user) { return res.status(400).send('Invalid email or password'); }
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) { return res.status(400).send('Invalid email or password'); }
-    const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '1h' });
-    res.cookie('token', token, { httpOnly: true, maxAge: 60 * 60 * 1000, secure: true, sameSite: 'Strict' }); 
+         // NAYA: 30 Din ki expiry
+    const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+    
+    res.cookie('token', token, { 
+        httpOnly: true, 
+        // 30 Din * 24 Ghante * 60 Min * 60 Sec * 1000 ms
+        maxAge: 30 * 24 * 60 * 60 * 1000, 
+        secure: true, 
+        sameSite: 'Lax' // 'Strict' ko 'Lax' kiya taaki WebView mein problem na ho
+    });
     console.log(`[Wappy] USER LOGGED IN: ${email}`);
     res.redirect('/chats.html');
   } catch (error) { 
@@ -754,7 +762,8 @@ app.post('/forgot-password', async (req, res, next) => {
       console.log(`[Wappy Forgot] Password reset attempt for non-existent user: ${email}`);
       return res.send("If this email is registered, you will receive a reset link.");
     }
-    const resetToken = jwt.sign({ email: user.email }, JWT_RESET_SECRET, { expiresIn: '10m' });
+        // NAYA: 30 Din ki expiry
+    const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '30d' });
     const resetUrl = `https://wappy-pro.onrender.com/reset-password.html?token=${resetToken}`;
     console.log(`[Wappy Forgot] Password reset link (SendGrid) sending to: ${email}`);
     const msg = {
