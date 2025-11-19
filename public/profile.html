@@ -17,7 +17,6 @@
     </script>
     
     <link rel="stylesheet" href="style.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
     
     <style>
         body { padding-bottom: 70px; }
@@ -38,40 +37,32 @@
         
         #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 4px; padding: 16px; position: fixed; z-index: 100; left: 50%; transform: translateX(-50%); bottom: 80px; transition: visibility 0s, opacity 0.5s linear; opacity: 0; }
         #toast.show { visibility: visible; opacity: 1; }
-        .hidden { display: none !important; }
+        .hidden { display: none; }
 
-        /* === WATERMELON SEED LOADER === */
+        /* === WATERMELON SEED LOADER CSS === */
         #watermelon-loader {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(255, 255, 255, 0.8); z-index: 50;
             display: flex; align-items: center; justify-content: center;
-            border-radius: 50%; display: none; 
+            border-radius: 50%; display: none; /* Hidden by default */
         }
         .dark #watermelon-loader { background: rgba(30, 30, 30, 0.8); }
+        
         .seed-spinner { width: 60px; height: 60px; position: relative; animation: spin 1.5s linear infinite; }
-        .seed { position: absolute; width: 8px; height: 12px; background-color: #000; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; left: 26px; top: 0; transform-origin: 4px 30px; }
-        .seed:nth-child(1) { transform: rotate(0deg); } .seed:nth-child(2) { transform: rotate(60deg); } .seed:nth-child(3) { transform: rotate(120deg); }
-        .seed:nth-child(4) { transform: rotate(180deg); } .seed:nth-child(5) { transform: rotate(240deg); } .seed:nth-child(6) { transform: rotate(300deg); }
+        
+        .seed {
+            position: absolute; width: 8px; height: 12px;
+            background-color: #000; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+            left: 26px; top: 0; transform-origin: 4px 30px;
+        }
+        .seed:nth-child(1) { transform: rotate(0deg); }
+        .seed:nth-child(2) { transform: rotate(60deg); }
+        .seed:nth-child(3) { transform: rotate(120deg); }
+        .seed:nth-child(4) { transform: rotate(180deg); }
+        .seed:nth-child(5) { transform: rotate(240deg); }
+        .seed:nth-child(6) { transform: rotate(300deg); }
+        
         @keyframes spin { 100% { transform: rotate(360deg); } }
-
-        /* === UNIQUE CROPPER STYLES === */
-        /* Modal poora screen cover karega */
-        #crop-modal {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: #000; z-index: 200; display: flex; flex-direction: column;
-        }
-        .cropper-container {
-            flex: 1; background-color: #000;
-        }
-        /* Ye hai wo UNIQUE WATERMELON LOOK */
-        .cropper-view-box {
-            border-radius: 50%; /* Gol Shape */
-            box-shadow: 0 0 0 1px #ff7a85; /* Soft Pink Border */
-            outline: 0;
-        }
-        .cropper-face {
-            background-color: inherit !important; /* Clean look */
-        }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900">
@@ -99,6 +90,7 @@
                 
                 <div class="relative w-32 h-32 mb-4">
                     <img id="avatar-img" src="placeholder.jpg" alt="Profile Picture" class="w-full h-full rounded-full object-cover border-4 border-green-500 dark:border-green-400 shadow-lg">
+                    
                     <div id="watermelon-loader">
                         <div class="seed-spinner">
                             <div class="seed"></div><div class="seed"></div><div class="seed"></div>
@@ -110,17 +102,17 @@
                 <h2 id="display-name" class="text-3xl font-bold text-gray-800 dark:text-white mb-2">Loading...</h2>
                 <p id="email" class="text-lg text-gray-500 dark:text-gray-400 mb-6">Loading...</p>
 
-                <input type="file" id="file-input" accept="image/*" class="hidden">
-                
-                <button id="change-photo-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">
-                    Change Photo
-                </button>
+                <form action="/api/upload-avatar" method="POST" enctype="multipart/form-data" class="w-full border-t dark:border-gray-700 pt-6" id="avatar-upload-form">
+                    <label for="avatar-input" class="block text-gray-700 dark:text-gray-300 mb-2">Change Profile Picture:</label>
+                    <input type="file" id="avatar-input" name="avatar" class="w-full mb-4 p-2 border rounded-lg bg-white dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" accept="image/png, image/jpeg">
+                    <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Upload Photo</button>
+                </form>
             </div>
             <a href="/set-name.html" class="block text-center w-full bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-white font-bold py-3 px-6 rounded-lg shadow-md mt-6">Change Display Name</a>
         </div>
         
         <div id="privacy" class="tab-content">
-             <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
                 <h3 class="text-2xl font-bold text-gray-800 dark:text-white mb-4">Privacy Settings</h3>
                 <div class="mb-4">
                     <label class="block text-gray-700 dark:text-gray-300 mb-2">Who can see my Last Seen:</label>
@@ -172,6 +164,7 @@
                 <button id="delete-account-btn" class="block text-center w-full btn-danger font-bold py-3 px-6 rounded-lg shadow-md">Delete Account (Danger)</button>
             </div>
         </div>
+        
     </div>
 
     <footer class="bottom-nav flex justify-around bg-white dark:bg-gray-800 shadow-md border-t dark:border-gray-700 p-2">
@@ -185,44 +178,23 @@
         </a>
     </footer>
     
-    <div id="crop-modal" class="hidden">
-        <div style="flex: 1; position: relative;">
-            <img id="crop-image" style="max-width: 100%;">
-        </div>
-        <div class="bg-gray-900 p-4 flex justify-between items-center">
-            <button id="cancel-crop-btn" class="text-white font-bold py-2 px-6 rounded hover:bg-gray-700">Cancel</button>
-            <span class="text-white text-sm">Adjust to fit circle</span>
-            <button id="save-crop-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-full">Save 🍉</button>
-        </div>
-    </div>
-
     <div id="toast" class="hidden fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg transition-opacity duration-300 z-30"></div>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
     <script>
-        // Elements
         const avatarImg = document.getElementById('avatar-img');
         const displayNameEl = document.getElementById('display-name');
         const emailEl = document.getElementById('email');
         const toast = document.getElementById('toast');
-        const loader = document.getElementById('watermelon-loader');
         
-        const fileInput = document.getElementById('file-input');
-        const changePhotoBtn = document.getElementById('change-photo-btn');
-        
-        // Cropper Elements
-        const cropModal = document.getElementById('crop-modal');
-        const cropImage = document.getElementById('crop-image');
-        const saveCropBtn = document.getElementById('save-crop-btn');
-        const cancelCropBtn = document.getElementById('cancel-crop-btn');
-        let cropper = null;
-
         const savePrivacyBtn = document.getElementById('save-privacy-btn');
         const themeToggle = document.getElementById('theme-toggle');
         const tabButtons = document.querySelectorAll('.tab-btn');
         const tabContents = document.querySelectorAll('.tab-content');
         const deleteAccountBtn = document.getElementById('delete-account-btn');
         const moodSelect = document.getElementById('mood-select');
+        
+        // NAYA: Loader & Form
+        const uploadForm = document.getElementById('avatar-upload-form');
+        const loader = document.getElementById('watermelon-loader');
 
         function showToast(message) {
             toast.textContent = message;
@@ -230,7 +202,6 @@
             setTimeout(() => { toast.classList.remove('opacity-100'); toast.classList.add('hidden'); }, 3000);
         }
 
-        // === Page Load ===
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 const response = await fetch('/api/me');
@@ -240,114 +211,54 @@
                 if (me.privacy && me.privacy.lastSeen) { document.querySelector(`input[name="privacy_lastSeen"][value="${me.privacy.lastSeen}"]`).checked = true; }
                 if (me.privacy && me.privacy.avatar) { document.querySelector(`input[name="privacy_avatar"][value="${me.privacy.avatar}"]`).checked = true; }
                 if (me.currentMood) { moodSelect.value = me.currentMood; }
-            } catch (error) { console.error(error); displayNameEl.textContent = 'Error'; }
+            } catch (error) { console.error('Error loading profile:', error); displayNameEl.textContent = 'Error'; }
         });
         
-        // === Change Photo Click ===
-        changePhotoBtn.addEventListener('click', () => {
-            fileInput.click(); // Hidden input kholo
-        });
-
-        // === File Selection & Cropper Start ===
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    cropImage.src = event.target.result;
-                    cropModal.classList.remove('hidden');
-                    
-                    // Init Cropper
-                    if(cropper) cropper.destroy();
-                    cropper = new Cropper(cropImage, {
-                        aspectRatio: 1, // Square/Circle
-                        viewMode: 1,
-                        dragMode: 'move',
-                        autoCropArea: 1,
-                        guides: false,
-                        background: false, // Black background
-                    });
-                };
-                reader.readAsDataURL(file);
-            }
-        });
-
-        // === Cancel Crop ===
-        cancelCropBtn.addEventListener('click', () => {
-            cropModal.classList.add('hidden');
-            fileInput.value = ''; // Reset
-            if(cropper) cropper.destroy();
-        });
-
-        // === Save Crop & Upload ===
-        saveCropBtn.addEventListener('click', () => {
-            if(!cropper) return;
-            
-            // Canvas lo
-            const canvas = cropper.getCroppedCanvas({
-                width: 300, height: 300 // Resize for optimization
-            });
-            
-            // Canvas to Blob
-            canvas.toBlob((blob) => {
-                // 1. Loader Dikhao
-                cropModal.classList.add('hidden');
-                loader.style.display = 'flex'; 
-                
-                // 2. FormData Banao
-                const formData = new FormData();
-                formData.append('avatar', blob, 'avatar.png');
-                
-                // 3. Upload API Call
-                fetch('/api/upload-avatar', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(async (response) => {
-                    // Check if response is actually a redirect (which fetch follows automatically)
-                    if (response.redirected) {
-                        window.location.href = response.url; // Manually follow redirect
-                    } else if (response.ok) {
-                         window.location.reload();
-                    } else {
-                        throw new Error('Upload failed');
-                    }
-                })
-                .catch((err) => {
-                    console.error(err);
-                    showToast('Upload failed. Try again.');
-                    loader.style.display = 'none';
-                });
-            }, 'image/png');
-        });
-
-        // === Other Settings ===
         moodSelect.addEventListener('change', async () => {
             const selectedMood = moodSelect.value;
             try {
                 const response = await fetch('/api/update-mood', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mood: selectedMood }) });
-                if (response.ok) showToast(`Mood updated to ${selectedMood}!`);
-            } catch (error) { showToast('Error updating mood.'); }
+                const result = await response.json();
+                if (response.ok) { showToast(`Mood updated to ${selectedMood}!`); } else { showToast(`Error: ${result.message}`); }
+            } catch (error) { showToast('Server error while updating mood.'); }
         });
+
         savePrivacyBtn.addEventListener('click', async () => {
-            const ls = document.querySelector('input[name="privacy_lastSeen"]:checked').value;
-            const av = document.querySelector('input[name="privacy_avatar"]:checked').value;
+            const newLastSeen = document.querySelector('input[name="privacy_lastSeen"]:checked').value;
+            const newAvatar = document.querySelector('input[name="privacy_avatar"]:checked').value;
             try {
-                const res = await fetch('/api/update-privacy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lastSeen: ls, avatar: av }) });
-                if (res.ok) showToast('Privacy saved!');
-            } catch (error) { showToast('Error saving privacy.'); }
+                const response = await fetch('/api/update-privacy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lastSeen: newLastSeen, avatar: newAvatar }) });
+                const result = await response.json();
+                if (response.ok) { showToast(result.message); } else { showToast(`Error: ${result.message}`); }
+            } catch (error) { showToast('Server error while saving.'); }
         });
+        
+        // NAYA: Loader Logic
+        if(uploadForm) {
+            uploadForm.addEventListener('submit', () => {
+                loader.style.display = 'flex'; // Seeds dikhao
+                const btn = uploadForm.querySelector('button');
+                btn.textContent = 'Planting Seeds...';
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+            });
+        }
+        
         themeToggle.addEventListener('click', () => {
             const isDark = document.documentElement.classList.toggle('dark');
             localStorage.setItem('theme', isDark ? 'dark' : 'light');
         });
+        
         tabButtons.forEach(button => {
             button.addEventListener('click', () => {
-                tabButtons.forEach(btn => btn.classList.remove('active')); button.classList.add('active');
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
                 tabContents.forEach(content => content.classList.remove('active'));
-                document.getElementById(button.dataset.tab).classList.add('active');
+                const tabId = button.dataset.tab;
+                document.getElementById(tabId).classList.add('active');
             });
         });
+        
         deleteAccountBtn.addEventListener('click', () => {
             if (confirm('DANGER: Are you sure?')) { showToast('Feature not built yet.'); }
         });
