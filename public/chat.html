@@ -49,7 +49,6 @@
         .bubble-meta { font-size: 0.7rem; color: #6B7280; text-align: right; margin-top: 4px; display: flex; justify-content: flex-end; align-items: center; }
         .dark .bubble-meta { color: #8696A0; }
         
-        /* Context Menu */
         #context-menu { position: absolute; background-color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 50; display: none; }
         .dark #context-menu { background-color: #202C33; }
         #context-menu button { display: block; width: 100%; padding: 12px 16px; background: none; border: none; text-align: left; color: #0F172A; font-size: 1rem; }
@@ -103,7 +102,7 @@
                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"></path></svg>
             </button>
             <div id="menu-dropdown" class="dropdown-content hidden absolute right-0 top-full bg-white dark:bg-gray-800 shadow-lg rounded p-2 z-20">
-                <a href="/logout" class="block p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-black dark:text-white no-underline">Logout</a>
+                <a href="#" onclick="localStorage.removeItem('wappy_token'); window.location.href='/logout';" class="block p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-black dark:text-white no-underline">Logout</a>
                 <a href="#" id="block-btn" class="block p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-black dark:text-white no-underline">Block User</a>
             </div>
         </div>
@@ -190,6 +189,7 @@
         if (!chatId) window.location.href = '/chats.html';
         isGroupChat = !chatId.includes('@');
 
+        // === FIX: TICKS FUNCTION (Inline Styles) ===
         function getTicks(status) {
             if (status === 'sending') return '<span style="margin-left:4px; font-size:0.7rem; color:#6B7280;">🕒</span>';
             if (status === 'seen') return '<span style="margin-left:4px; font-size:0.7rem; color:#3b82f6; font-weight:bold;">✓✓</span>';
@@ -272,20 +272,17 @@
             let bubbleClass = isSender ? 'bubble-sender' : 'bubble-receiver';
             if (msg.isStarred) bubbleClass += ' starred';
             if (msg.isTruthMode) bubbleClass += ' is-truth';
-            // NAYA: Puzzle class
             if (msg.puzzleType && msg.puzzleType !== 'none') bubbleClass += ' has-puzzle';
             
             const ticks = isSender ? getTicks(msg.status) : '';
             const truthBadge = msg.isTruthMode ? '<span class="truth-badge">🟢</span>' : '';
             
-            // NAYA: Puzzle Icon Logic
             let pIcon = '';
             if (msg.puzzleType === 'blur') pIcon = '🧩';
             else if (msg.puzzleType === 'scramble') pIcon = '🔠';
             else if (msg.puzzleType === 'hidden') pIcon = '🔎';
             const puzzleIconSpan = (msg.puzzleType && msg.puzzleType !== 'none') ? `<span class="puzzle-icon">${pIcon}</span>` : '';
 
-            // === NAYA: PUZZLE TEXT LOGIC ===
             let messageTextHTML = '';
             if (msg.isDeleted) {
                 messageTextHTML = `<p class="m-0 deleted-message">Deleted message</p>`;
@@ -299,7 +296,6 @@
             } else {
                 messageTextHTML = `<p class="m-0">${msg.text}</p>`;
             }
-            // === END ===
 
             const senderName = (isGroupChat && !isSender) ? `<div class="sender-name">${msg.senderName}</div>` : '';
             let replyHtml = '';
@@ -322,9 +318,7 @@
 
             if (!msg.isDeleted) {
                 const bubble = item.querySelector('.bubble');
-                bubble.addEventListener('contextmenu', (e) => {
-                    e.preventDefault(); openContextMenu(e, msg.messageId, isSender, bubble, msg.text, msg.senderName, msg.isTruthMode);
-                });
+                bubble.addEventListener('contextmenu', (e) => { e.preventDefault(); openContextMenu(e, msg.messageId, isSender, bubble, msg.text, msg.senderName, msg.isTruthMode); });
                 let timer;
                 bubble.addEventListener('touchstart', (e) => { timer = setTimeout(() => { openContextMenu(e, msg.messageId, isSender, bubble, msg.text, msg.senderName, msg.isTruthMode); }, 500); });
                 bubble.addEventListener('touchend', () => clearTimeout(timer));
@@ -345,30 +339,19 @@
         }
 
         truthModeBtn.addEventListener('click', () => {
-            if(activePuzzleType !== 'none') puzzleBtn.click(); // Reset puzzle if Truth is on
+            if(activePuzzleType !== 'none') puzzleBtn.click(); 
             isTruthModeActive = !isTruthModeActive;
             const icon = truthModeBtn.querySelector('span');
             if (isTruthModeActive) { icon.textContent = '🔒'; truthModeBtn.classList.add('text-green-500'); showToast('Truth Mode ON'); }
             else { icon.textContent = '🔓'; truthModeBtn.classList.remove('text-green-500'); showToast('Truth Mode OFF'); }
         });
 
-        // === NAYA: Puzzle Mode Toggle ===
         puzzleBtn.addEventListener('click', () => {
-            if(isTruthModeActive) truthModeBtn.click(); // Reset truth if puzzle is on
-            
-            if (activePuzzleType === 'none') {
-                activePuzzleType = 'blur';
-                puzzleBtn.innerHTML = '<span>🧩</span>'; showToast('Puzzle: Blur'); puzzleBtn.classList.add('text-purple-500');
-            } else if (activePuzzleType === 'blur') {
-                activePuzzleType = 'scramble';
-                puzzleBtn.innerHTML = '<span>🔠</span>'; showToast('Puzzle: Scramble');
-            } else if (activePuzzleType === 'scramble') {
-                activePuzzleType = 'hidden';
-                puzzleBtn.innerHTML = '<span>🔎</span>'; showToast('Puzzle: Hidden');
-            } else {
-                activePuzzleType = 'none';
-                puzzleBtn.innerHTML = '<span>🧩</span>'; showToast('Puzzle Mode OFF'); puzzleBtn.classList.remove('text-purple-500');
-            }
+            if(isTruthModeActive) truthModeBtn.click(); 
+            if (activePuzzleType === 'none') { activePuzzleType = 'blur'; puzzleBtn.innerHTML = '<span>🧩</span>'; showToast('Puzzle: Blur'); puzzleBtn.classList.add('text-purple-500'); } 
+            else if (activePuzzleType === 'blur') { activePuzzleType = 'scramble'; puzzleBtn.innerHTML = '<span>🔠</span>'; showToast('Puzzle: Scramble'); } 
+            else if (activePuzzleType === 'scramble') { activePuzzleType = 'hidden'; puzzleBtn.innerHTML = '<span>🔎</span>'; showToast('Puzzle: Hidden'); } 
+            else { activePuzzleType = 'none'; puzzleBtn.innerHTML = '<span>🧩</span>'; showToast('Puzzle Mode OFF'); puzzleBtn.classList.remove('text-purple-500'); }
         });
 
         form.addEventListener('submit', (e) => {
@@ -376,22 +359,12 @@
             const text = input.value.trim();
             if (text && chatId && !isBlocked) {
                 const tempId = Date.now().toString() + myEmail;
-                const msgData = {
-                    messageId: tempId, tempId, senderEmail: myEmail, text, timestamp: Date.now(), 
-                    status: 'sending', isTruthMode: isTruthModeActive, 
-                    puzzleType: activePuzzleType, // NAYA
-                    replyTo: currentReplyTo
-                };
+                const msgData = { messageId: tempId, tempId, senderEmail: myEmail, text, timestamp: Date.now(), status: 'sending', isTruthMode: isTruthModeActive, puzzleType: activePuzzleType, replyTo: currentReplyTo };
                 renderMessage(msgData, true);
-                socket.emit('send message', {
-                    receiverId: chatId, text, tempId, replyTo: currentReplyTo, 
-                    isTruthMode: isTruthModeActive, puzzleType: activePuzzleType // NAYA
-                });
+                socket.emit('send message', { receiverId: chatId, text, tempId, replyTo: currentReplyTo, isTruthMode: isTruthModeActive, puzzleType: activePuzzleType });
                 socket.emit('stop typing', { chatId: chatId });
                 input.value = ''; currentReplyTo = null; replyPreview.classList.add('hidden');
-                
-                if (isTruthModeActive) truthModeBtn.click();
-                if (activePuzzleType !== 'none') puzzleBtn.click();
+                if (isTruthModeActive) truthModeBtn.click(); if (activePuzzleType !== 'none') puzzleBtn.click();
             }
         });
 
@@ -407,27 +380,19 @@
         socket.on('new message', (msg) => {
             if(msg.senderEmail === myEmail && msg.tempId) {
                 const tempLi = document.querySelector(`li[data-temp-id="${msg.tempId}"]`);
-                if(tempLi) {
-                    tempLi.setAttribute('data-message-id', msg.messageId);
-                    updateMessageTicks({messageId: msg.messageId, status: 'sent'});
-                }
-            } else if (msg.senderEmail !== myEmail) {
-                renderMessage(msg, true);
-                socket.emit('mark messages seen', { chatId: chatId });
-            }
+                if(tempLi) { tempLi.setAttribute('data-message-id', msg.messageId); updateMessageTicks({messageId: msg.messageId, status: 'sent'}); }
+            } else if (msg.senderEmail !== myEmail) { renderMessage(msg, true); socket.emit('mark messages seen', { chatId: chatId }); }
         });
         socket.on('messages updated', (msgs) => msgs.forEach(updateMessageTicks));
 
         function openContextMenu(e, msgId, isSender, bubble, text, sender, isTruth) {
             currentContextMenuMsgId = msgId; currentContextMenuBubble = bubble;
             currentReplyTo = { messageId: msgId, text: text, senderName: isSender ? "You" : sender };
-            const delMe = document.getElementById('ctx-delete-me');
-            const delAll = document.getElementById('ctx-delete-everyone');
+            const delMe = document.getElementById('ctx-delete-me'); const delAll = document.getElementById('ctx-delete-everyone');
             if (isTruth) { delMe.style.display = 'none'; delAll.style.display = 'none'; }
             else { delMe.style.display = 'block'; delAll.style.display = isSender ? 'block' : 'none'; }
             contextMenu.style.display = 'block'; contextMenuOverlay.classList.remove('hidden');
-            const x = e.touches ? e.touches[0].pageX : e.pageX;
-            const y = e.touches ? e.touches[0].pageY : e.pageY;
+            const x = e.touches ? e.touches[0].pageX : e.pageX; const y = e.touches ? e.touches[0].pageY : e.pageY;
             contextMenu.style.left = (x - 60) + 'px'; contextMenu.style.top = (y - 50) + 'px';
         }
 
@@ -437,10 +402,7 @@
         document.getElementById('ctx-copy').onclick = () => { navigator.clipboard.writeText(currentReplyTo.text); showToast('Copied'); contextMenuOverlay.click(); };
         document.getElementById('ctx-delete-me').onclick = () => { socket.emit('delete for me', { messageId: currentContextMenuMsgId }); contextMenuOverlay.click(); };
         document.getElementById('ctx-delete-everyone').onclick = () => { socket.emit('delete message', { messageId: currentContextMenuMsgId }); contextMenuOverlay.click(); };
-        document.getElementById('ctx-star').onclick = async () => { 
-             // ... star logic ...
-             contextMenuOverlay.click(); 
-        };
+        document.getElementById('ctx-star').onclick = async () => { contextMenuOverlay.click(); };
         document.getElementById('menu-btn').onclick = () => document.getElementById('menu-dropdown').classList.toggle('hidden');
         function updateBlockUI(b) { blockBtn.textContent = b ? 'Unblock' : 'Block'; input.disabled = b; }
 
