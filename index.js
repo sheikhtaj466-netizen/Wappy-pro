@@ -280,10 +280,30 @@ app.get('/api/chats', protectRoute, async (req, res) => {
     } catch (error) { console.error(error); res.status(500).json({ message: 'Server error' }); }
 });
 // --- POST ACTIONS ---
-app.post('/api/upload-avatar', protectRoute, upload.single('avatar'), async (req, res, next) => { 
-  try { if (!req.file) { return res.status(400).send('No file uploaded.'); } const avatarUrl = req.file.path; await User.updateOne({ email: req.user.email }, { $set: { avatarUrl: avatarUrl } }); res.redirect('/profile.html'); } catch (error) { next(error); }
+// === UPDATED: Avatar Upload Route ===
+app.post('/api/upload-avatar', protectRoute, upload.single('avatar'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).send('No file uploaded.'); // Agar file select nahi ki
+    }
+    
+    // Cloudinary se URL lo
+    const avatarUrl = req.file.path;
+    
+    // Database update karo
+    await User.updateOne({ email: req.user.email }, { $set: { avatarUrl: avatarUrl } });
+    
+    console.log(`[Wappy] Avatar updated: ${avatarUrl}`);
+    
+    // Profile page par wapas bhejo
+    res.redirect('/profile.html');
+    
+  } catch (error) {
+    console.error('[Wappy Error] Upload failed:', error);
+    // User ko error dikhao
+    res.status(500).send(`Server Error: ${error.message}`);
+  }
 });
-
 app.post('/api/toggle-block', protectRoute, async (req, res) => {
   try { const { friendEmail } = req.body; const ownerEmail = req.user.email; const contact = await Contact.findOne({ ownerEmail: ownerEmail, friendEmail: friendEmail }); if (contact) { contact.isBlocked = !contact.isBlocked; await contact.save(); res.json({ message: `User ${contact.isBlocked?'blocked':'unblocked'}`, isBlocked: contact.isBlocked }); } else { res.status(404).send('Contact not found'); } } catch (error) { res.status(500).send('Server error'); }
 });
