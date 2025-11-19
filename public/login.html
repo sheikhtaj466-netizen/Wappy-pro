@@ -6,48 +6,140 @@
     <title>Login 🍉 Wappy</title>
     
     <script>
-        (function() {
-            if (localStorage.getItem('theme') === 'dark' || 
-                (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                document.documentElement.classList.add('dark');
-            } else {
-                document.documentElement.classList.remove('dark');
-            }
-        })();
+        // Dark mode check
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
     </script>
-    
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 flex items-center justify-center h-screen">
+
+    <div id="loading-screen" class="fixed inset-0 bg-white dark:bg-gray-900 z-50 flex flex-col items-center justify-content-center hidden">
+        <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #22c55e; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <p class="mt-4 text-gray-600 dark:text-gray-300 font-medium">Logging you in...</p>
+    </div>
 
     <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md w-96">
         <h2 class="text-3xl font-bold text-center text-green-600 mb-6">
             Login to Wappy 🍉
         </h2>
         
-        <form action="/login" method="POST">
+        <form id="loginForm">
             <div class="mb-4">
                 <label for="email" class="block text-gray-700 dark:text-gray-300 mb-2">Email</label>
                 <input type="email" id="email" name="email" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" required>
             </div>
-            
             <div class="mb-6">
                 <label for="password" class="block text-gray-700 dark:text-gray-300 mb-2">Password</label>
                 <input type="password" id="password" name="password" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" required>
             </div>
-            
-            <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">
+            <button type="submit" id="loginBtn" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
                 Login
             </button>
-
-            <a href="/forgot-password.html" class="block text-center text-sm text-gray-600 dark:text-gray-400 mt-4 hover:text-green-600 dark:hover:text-green-400">
-                Forgot Password?
-            </a>
-            <a href="/register.html" class="block text-center text-sm text-gray-600 dark:text-gray-400 mt-2 hover:text-green-600 dark:hover:text-green-400">
-                Don't have an account? Register
-            </a>
         </form>
+        
+        <p class="mt-4 text-center text-gray-600 dark:text-gray-400 text-sm">
+            Don't have an account? <a href="/register.html" class="text-green-500 hover:text-green-600 font-bold">Register</a>
+        </p>
+        <p class="mt-2 text-center">
+            <a href="/forgot-password.html" class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Forgot Password?</a>
+        </p>
+        <p id="error-msg" class="mt-4 text-red-500 text-center text-sm hidden"></p>
     </div>
 
+    <style>
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .hidden { display: none !important; }
+        #loading-screen { display: flex; align-items: center; justify-content: center; }
+    </style>
+
+    <script>
+        const loginForm = document.getElementById('loginForm');
+        const errorMsg = document.getElementById('error-msg');
+        const loginBtn = document.getElementById('loginBtn');
+        const loadingScreen = document.getElementById('loading-screen');
+
+        // === 1. AUTO LOGIN CHECK (Page Load Hote Hi) ===
+        window.addEventListener('DOMContentLoaded', async () => {
+            const savedToken = localStorage.getItem('wappy_token');
+            
+            if (savedToken) {
+                // Token mila! Auto-login try karo
+                loadingScreen.classList.remove('hidden'); // Loading dikhao
+                
+                try {
+                    const response = await fetch('/api/restore-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: savedToken })
+                    });
+                    
+                    if (response.ok) {
+                        // Success! Home page par jao
+                        window.location.href = '/home.html';
+                    } else {
+                        // Token expired/invalid - Loading hatao, login karne do
+                        localStorage.removeItem('wappy_token'); // Kharab token delete karo
+                        loadingScreen.classList.add('hidden');
+                    }
+                } catch (err) {
+                    console.error("Auto-login failed", err);
+                    loadingScreen.classList.add('hidden');
+                }
+            } else {
+                loadingScreen.classList.add('hidden');
+            }
+        });
+
+        // === 2. MANUAL LOGIN LOGIC ===
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
+            errorMsg.classList.add('hidden');
+
+            try {
+                // Hamare Naye Native Route ka use karenge jo Token deta hai
+                const response = await fetch('/api/native/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Login Successful!
+                    // === TOKEN SAVE KARO (Permanent Solution) ===
+                    localStorage.setItem('wappy_token', data.token);
+                    
+                    // Cookie bhi set ho gayi hogi server se, toh redirect karo
+                    // Lekin ek baar restore-session call kar lete hain taaki cookie pakki ho jaye
+                    await fetch('/api/restore-session', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: data.token })
+                    });
+                    
+                    window.location.href = '/home.html';
+                } else {
+                    errorMsg.textContent = data.message || 'Login failed';
+                    errorMsg.classList.remove('hidden');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Login';
+                }
+            } catch (error) {
+                errorMsg.textContent = 'Server error. Please try again.';
+                errorMsg.classList.remove('hidden');
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
+            }
+        });
+    </script>
 </body>
 </html>

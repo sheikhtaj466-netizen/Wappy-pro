@@ -533,7 +533,35 @@ app.post('/login', loginLimiter, async (req, res, next) => {
     if (!isMatch) { return res.status(400).send('Invalid email or password'); }
          // NAYA: 30 Din ki expiry
     const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '30d' });
+    // === NAYA: Auto-Login / Restore Session Route ===
+app.post('/api/restore-session', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: 'No token provided' });
+
+    // Token verify karo
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = await User.findOne({ email: decoded.email }).lean();
     
+    if (!user) return res.status(401).json({ message: 'Invalid user' });
+
+    // Agar sab sahi hai, toh COOKIE wapas set karo (30 din ke liye)
+    res.cookie('token', token, { 
+        httpOnly: true, 
+        maxAge: 30 * 24 * 60 * 60 * 1000, 
+        secure: true, 
+        sameSite: 'Lax' 
+    });
+
+    console.log(`[Wappy] Session Restored for: ${user.email}`);
+    res.json({ message: 'Session restored', user: user });
+
+  } catch (error) {
+    console.error('Restore session failed:', error.message);
+    res.status(401).json({ message: 'Invalid or expired token' });
+  }
+});
+// === END NAYA ROUTE ===
     res.cookie('token', token, { 
         httpOnly: true, 
         // 30 Din * 24 Ghante * 60 Min * 60 Sec * 1000 ms
