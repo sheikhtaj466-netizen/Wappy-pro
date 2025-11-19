@@ -38,43 +38,46 @@
         
         .modal-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            top: 0; left: 0; right: 0; bottom: 0;
             background-color: rgba(0, 0, 0, 0.5);
             z-index: 30;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: flex; align-items: center; justify-content: center;
         }
-        .modal-box {
-            width: 90%;
-            max-width: 500px;
-        }
-        .hidden {
-            display: none;
-        }
+        .modal-box { width: 90%; max-width: 500px; }
+        .hidden { display: none; }
         
+        /* Notification Badge */
         .notification-badge {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background-color: red;
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            border: 2px solid white;
+            position: absolute; top: -5px; right: -5px;
+            background-color: red; color: white;
+            border-radius: 50%; width: 20px; height: 20px;
+            font-size: 12px; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; border: 2px solid white;
         }
-        .dark .notification-badge {
-            border-color: #121212;
+        .dark .notification-badge { border-color: #121212; }
+
+        /* Ripple Signature */
+        #creator-signature {
+            position: fixed; bottom: 20px; left: 20px; z-index: 50;
+            pointer-events: auto; opacity: 0; transition: opacity 0.8s ease-out;
+            display: flex; align-items: center; justify-content: center;
         }
+        .signature-text {
+            font-family: 'Courier New', monospace; font-size: 0.75rem; color: #22c55e;
+            font-weight: bold; letter-spacing: 1px; text-transform: uppercase;
+            white-space: nowrap; text-shadow: 0px 2px 4px rgba(0,0,0,0.1);
+        }
+        .dark .signature-text { color: #4ade80; }
+        .ripple-circle {
+            position: absolute; width: 10px; height: 10px; border-radius: 50%;
+            background: rgba(34, 197, 94, 0.4); transform: scale(0); z-index: -1;
+        }
+        @keyframes rippleEffect {
+            0% { transform: scale(0); opacity: 0.8; }
+            100% { transform: scale(8); opacity: 0; }
+        }
+        .animate-ripple { animation: rippleEffect 1.2s ease-out forwards; }
+        .reveal-signature { opacity: 1 !important; }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900">
@@ -109,20 +112,14 @@
     </header>
 
     <div class="container mx-auto p-4 max-w-lg">
-        
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-            <h2 class="text-xl font-bold text-gray-800 dark:text-white p-4 border-b dark:border-gray-700">
-                Your Contacts
-            </h2>
+            <h2 class="text-xl font-bold text-gray-800 dark:text-white p-4 border-b dark:border-gray-700">Your Contacts</h2>
             <div id="contacts-list">
                 <p id="loading-text" class="text-gray-500 dark:text-gray-400 p-6">Loading your contacts...</p>
                 <div id="skeleton-loader" class="hidden">
                     <div class="flex items-center p-4 border-b dark:border-gray-700 animate-pulse">
                         <div class="w-12 h-12 rounded-full bg-gray-300 dark:bg-gray-700 mr-4"></div>
-                        <div class="flex-1">
-                            <div class="h-5 bg-gray-300 dark:bg-gray-700 rounded w-1/2 mb-2"></div>
-                            <div class="h-3 bg-gray-300 dark:bg-gray-700 rounded w-1/4"></div>
-                        </div>
+                        <div class="flex-1"><div class="h-5 bg-gray-300 dark:bg-gray-700 rounded w-1/2 mb-2"></div><div class="h-3 bg-gray-300 dark:bg-gray-700 rounded w-1/4"></div></div>
                     </div>
                 </div>
             </div>
@@ -135,15 +132,12 @@
     
     <footer class="bottom-nav flex justify-around bg-white dark:bg-gray-800 shadow-md border-t dark:border-gray-700 p-2">
         <a href="/chats.html" class="flex flex-col items-center text-gray-500 dark:text-gray-400 p-2">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 5.523-4.477 10-10 10S1 17.523 1 12 5.477 2 11 2s10 4.477 10 10z"></path></svg>
-            <span class="text-xs">Chats</span>
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 5.523-4.477 10-10 10S1 17.523 1 12 5.477 2 11 2s10 4.477 10 10z"></path></svg> <span class="text-xs">Chats</span>
         </a>
-        <a href="/home.html" class="flex flex-col items-center text-green-600 dark:text-green-400 p-2"> <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M17 2H7C5.897 2 5 2.897 5 4v16c0 1.103.897 2 2 2h10c1.103 0 2-.897 2-2V4C19 2.897 18.103 2 17 2zM7 18V6h10v12H7zm5-9c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2z"></path></svg>
-            <span class="text-xs">Contacts</span>
+        <a href="/home.html" class="flex flex-col items-center text-green-600 dark:text-green-400 p-2"> <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M17 2H7C5.897 2 5 2.897 5 4v16c0 1.103.897 2 2 2h10c1.103 0 2-.897 2-2V4C19 2.897 18.103 2 17 2zM7 18V6h10v12H7zm5-9c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2z"></path></svg> <span class="text-xs">Contacts</span>
         </a>
         <a href="/profile.html" class="flex flex-col items-center text-gray-500 dark:text-gray-400 p-2">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-            <span class="text-xs">Profile</span>
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg> <span class="text-xs">Profile</span>
         </a>
     </footer>
 
@@ -158,9 +152,7 @@
                     <label for="friendEmail" class="block text-gray-700 dark:text-gray-300 mb-2">Friend's Email (Gmail)</label>
                     <input type="email" id="friendEmail" name="friendEmail" class="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" required>
                 </div>
-                <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">
-                    Send Request
-                </button>
+                <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Send Request</button>
             </form>
         </div>
     </div>
@@ -176,15 +168,14 @@
             </div>
         </div>
     </div>
+    
+    <div id="creator-signature">
+        <div id="ripple-bg" class="ripple-circle"></div>
+        <span id="signature-text" class="signature-text">🍉 A MelonCraft by Taj</span>
+    </div>
 
     <div id="toast" class="hidden fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg transition-opacity duration-300 z-30"></div>
-    
-</body>
-</html>
     <script>
-        // === NAYA JAVASCRIPT (FINAL - KADAM 4.2 CORRECTED) ===
-        
-        // 1. Saare Elements Define Karna
         const socket = io();
         const contactsListDiv = document.getElementById('contacts-list');
         const loadingText = document.getElementById('loading-text');
@@ -196,13 +187,12 @@
         const searchInput = document.getElementById('search-contacts');
         let searchDebounceTimer;
 
-        // "Add Friend" Modal Elements
+        // Modals & Forms
         const addFriendFab = document.getElementById('add-friend-fab');
         const addFriendModal = document.getElementById('add-friend-modal');
         const closeModalBtn = document.getElementById('close-modal-btn');
         const addFriendForm = document.getElementById('add-friend-form');
         
-        // "Friend Requests" Modal Elements
         const requestsBtn = document.getElementById('requests-btn');
         const requestsCount = document.getElementById('requests-count');
         const requestsModal = document.getElementById('requests-modal');
@@ -210,41 +200,24 @@
         const requestsList = document.getElementById('requests-list');
         const noRequestsText = document.getElementById('no-requests-text');
 
-        // 2. Helper Functions (Functions ko pehle define karna)
-        
         function showToast(message) {
             toast.textContent = message;
-            toast.classList.remove('hidden');
-            toast.classList.add('opacity-100');
-            setTimeout(() => { 
-                toast.classList.remove('opacity-100');
-                toast.classList.add('hidden');
-            }, 3000);
+            toast.classList.remove('hidden'); toast.classList.add('opacity-100');
+            setTimeout(() => { toast.classList.remove('opacity-100'); toast.classList.add('hidden'); }, 3000);
         }
 
-        // TogglePin function ko createContactCard se pehle define karna zaroori hai
         async function togglePin(event) {
-            // Button par click ko aage link tak jaane se roko
-            event.preventDefault(); 
-            event.stopPropagation();
-            
-            const button = event.currentTarget;
-            const friendEmail = button.dataset.email;
+            event.preventDefault(); event.stopPropagation();
+            const button = event.currentTarget; const friendEmail = button.dataset.email;
             try {
                 const response = await fetch('/api/toggle-pin', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ friendEmail: friendEmail })
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ friendEmail: friendEmail })
                 });
                 const result = await response.json();
-                if (response.ok) {
-                    showToast(result.message);
-                    loadContacts(searchInput.value); // List ko refresh karo
-                } else { showToast(`Error: ${result.message}`); }
+                if (response.ok) { showToast(result.message); loadContacts(searchInput.value); } else { showToast(`Error: ${result.message}`); }
             } catch (error) { showToast('Server error while pinning chat.'); }
         }
 
-        // createContactCard function ko renderContact se pehle define karna
         function createContactCard(contact) {
             const contactEl = document.createElement('div');
             contactEl.className = `flex items-center p-4 dark:border-gray-700 no-underline ${contact.isPinned ? 'pinned dark:pinned' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`;
@@ -257,9 +230,7 @@
                         <span class="text-lg text-gray-800 dark:text-white font-medium">${contact.nickname}</span>
                         <div id="status-${contact.friendEmail}" class="flex items-center space-x-2">
                             <span class="h-3 w-3 rounded-full ${contact.status === 'Online' ? 'bg-green-500' : 'bg-gray-400'}"></span>
-                            <span class="text-sm ${contact.status === 'Online' ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}">
-                                ${contact.status || 'Offline'}
-                            </span>
+                            <span class="text-sm ${contact.status === 'Online' ? 'text-green-600' : 'text-gray-500 dark:text-gray-400'}">${contact.status || 'Offline'}</span>
                         </div>
                     </div>
                 </a>
@@ -267,272 +238,146 @@
                     <span class="text-xl">${contact.isPinned ? '📌' : '📍'}</span>
                 </button>
             `;
-            
             const pinBtn = contactEl.querySelector('.pin-btn');
-            if (pinBtn) { 
-                pinBtn.addEventListener('click', togglePin); // Ab togglePin defined hai
-            }
+            if (pinBtn) { pinBtn.addEventListener('click', togglePin); }
             return contactEl;
         }
 
         function renderContact(contact) {
-            const contactEl = createContactCard(contact); // Ab createContactCard defined hai
+            const contactEl = createContactCard(contact);
             contactsListDiv.appendChild(contactEl);
         }
         
-        // Bell icon par count update karna
         function updateRequestCount(count) {
-            if (count > 0) {
-                requestsCount.textContent = count;
-                requestsCount.classList.remove('hidden');
-            } else {
-                requestsCount.classList.add('hidden');
-            }
+            if (count > 0) { requestsCount.textContent = count; requestsCount.classList.remove('hidden'); } 
+            else { requestsCount.classList.add('hidden'); }
         }
         
-        // Accept/Decline button ki request bhejna
         async function handleRequestAction(event) {
             const button = event.target;
-            // Sirf 'accept-btn' ya 'decline-btn' par hi chalao
             const action = button.classList.contains('accept-btn') ? 'accept' : (button.classList.contains('decline-btn') ? 'decline' : null);
             if (!action) return; 
-
-            const requestEl = button.closest('[data-request-id]');
-            const requestId = requestEl.dataset.requestId;
-            
-            button.disabled = true; // Button ko disable karo
-            button.textContent = '...';
-
+            const requestEl = button.closest('[data-request-id]'); const requestId = requestEl.dataset.requestId;
+            button.disabled = true; button.textContent = '...';
             try {
                 const response = await fetch(`/api/friend-requests/${action}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ requestId: requestId })
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: requestId })
                 });
                 const result = await response.json();
                 if (response.ok) {
-                    showToast(result.message);
-                    requestEl.remove(); // UI se request hatao
-                    
+                    showToast(result.message); requestEl.remove();
                     const remainingRequests = requestsList.querySelectorAll('[data-request-id]');
-                    if (remainingRequests.length === 0) {
-                        requestsList.appendChild(noRequestsText);
-                    }
+                    if (remainingRequests.length === 0) { requestsList.appendChild(noRequestsText); }
                     updateRequestCount(remainingRequests.length);
-
-                    if (action === 'accept') {
-                        loadContacts(); // Naye dost ko list mein add karne ke liye refresh karo
-                    }
-                } else {
-                    showToast(`Error: ${result.message}`);
-                    button.disabled = false; // Error par button waapas enable karo
-                }
-            } catch (error) {
-                showToast('Server error while responding.');
-                button.disabled = false;
-            }
+                    if (action === 'accept') { loadContacts(); }
+                } else { showToast(`Error: ${result.message}`); button.disabled = false; }
+            } catch (error) { showToast('Server error while responding.'); button.disabled = false; }
         }
-        
-        // 3. Main Functions (Data Load Karne Waale)
 
         async function loadContacts(searchQuery = '') {
-            loadingText.style.display = 'none';
-            skeletonLoader.style.display = 'block'; 
+            loadingText.style.display = 'none'; skeletonLoader.style.display = 'block'; 
             try {
                 if (!searchQuery) {
-                    const meResponse = await fetch('/api/me');
-                    const me = await meResponse.json();
-                    if (me.avatarUrl) { headerAvatar.src = me.avatarUrl; } 
-                    else { headerAvatar.src = `https://ui-avatars.com/api/?name=${me.displayName.charAt(0)}&background=random&size=32`; }
+                    const meResponse = await fetch('/api/me'); const me = await meResponse.json();
+                    if (me.avatarUrl) { headerAvatar.src = me.avatarUrl; } else { headerAvatar.src = `https://ui-avatars.com/api/?name=${me.displayName.charAt(0)}&background=random&size=32`; }
                 }
-
-                const response = await fetch(`/api/contacts?q=${searchQuery}`);
-                const contacts = await response.json();
-                
-                skeletonLoader.style.display = 'none'; 
-                contactsListDiv.innerHTML = ''; 
-
+                const response = await fetch(`/api/contacts?q=${searchQuery}`); const contacts = await response.json();
+                skeletonLoader.style.display = 'none'; contactsListDiv.innerHTML = ''; 
                 if (contacts.length === 0) {
                     if (searchQuery) { contactsListDiv.innerHTML = `<p class="text-gray-500 dark:text-gray-400 p-6">No contacts found matching "${searchQuery}".</p>`; } 
                     else { contactsListDiv.innerHTML = '<p class="text-gray-500 dark:text-gray-400 p-6">No contacts yet. Tap + to send a request.</p>'; }
                     return;
                 }
-                contacts.forEach(renderContact); // Ab 'renderContact' defined hai
-                
+                contacts.forEach(renderContact);
             } catch (error) {
-                console.error('Error loading contacts:', error);
-                skeletonLoader.style.display = 'none';
-                contactsListDiv.innerHTML = '<p class="text-red-500 dark:text-red-400 p-6">Could not load contacts.</p>';
+                console.error('Error loading contacts:', error); skeletonLoader.style.display = 'none'; contactsListDiv.innerHTML = '<p class="text-red-500 dark:text-red-400 p-6">Could not load contacts.</p>';
             }
         }
         
         async function loadFriendRequests() {
             try {
                 requestsList.innerHTML = '<p class="text-gray-500 dark:text-gray-400 p-4 text-center">Loading requests...</p>';
-                const response = await fetch('/api/friend-requests');
-                if (!response.ok) { throw new Error('Failed to fetch requests'); }
+                const response = await fetch('/api/friend-requests'); if (!response.ok) { throw new Error('Failed to fetch requests'); }
                 const requests = await response.json();
-                
                 requestsList.innerHTML = ''; 
-                
-                if (requests.length === 0) {
-                    requestsList.appendChild(noRequestsText);
-                    updateRequestCount(0);
-                } else {
+                if (requests.length === 0) { requestsList.appendChild(noRequestsText); updateRequestCount(0); } 
+                else {
                     updateRequestCount(requests.length);
                     requests.forEach(request => {
                         const reqEl = document.createElement('div');
-                        reqEl.className = 'flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700';
-                        reqEl.dataset.requestId = request._id;
+                        reqEl.className = 'flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700'; reqEl.dataset.requestId = request._id;
                         const avatarSrc = request.avatarUrl ? request.avatarUrl : `https://ui-avatars.com/api/?name=${request.displayName.charAt(0)}&background=random&size=40`;
-                        
-                        reqEl.innerHTML = `
-                            <div class="flex items-center">
-                                <img src="${avatarSrc}" class="w-10 h-10 rounded-full object-cover mr-3">
-                                <span class="font-semibold text-gray-800 dark:text-white">${request.displayName}</span>
-                            </div>
-                            <div class="space-x-2 flex-shrink-0">
-                                <button class="accept-btn bg-green-500 text-white px-3 py-1 rounded-lg text-sm font-bold">Accept</button>
-                                <button class="decline-btn bg-gray-500 text-white px-3 py-1 rounded-lg text-sm font-bold">Decline</button>
-                            </div>
-                        `;
+                        reqEl.innerHTML = `<div class="flex items-center"><img src="${avatarSrc}" class="w-10 h-10 rounded-full object-cover mr-3"><span class="font-semibold text-gray-800 dark:text-white">${request.displayName}</span></div><div class="space-x-2 flex-shrink-0"><button class="accept-btn bg-green-500 text-white px-3 py-1 rounded-lg text-sm font-bold">Accept</button><button class="decline-btn bg-gray-500 text-white px-3 py-1 rounded-lg text-sm font-bold">Decline</button></div>`;
                         requestsList.appendChild(reqEl);
                     });
                 }
-            } catch (error) {
-                console.error('Error loading requests:', error);
-                requestsList.innerHTML = '<p class="text-red-500 dark:text-red-400 p-4 text-center">Could not load requests.</p>';
-            }
+            } catch (error) { console.error('Error loading requests:', error); requestsList.innerHTML = '<p class="text-red-500 dark:text-red-400 p-4 text-center">Could not load requests.</p>'; }
         }
         
-        // 4. Socket Listeners
-
+        // Socket Listeners
         socket.on('new_friend_request', (request) => {
-            console.log('Nayi friend request aayi:', request);
             showToast(`${request.displayName} sent you a friend request!`);
-            // Count ko bas 1 badha do
-            const currentCount = parseInt(requestsCount.textContent) || 0;
-            updateRequestCount(currentCount + 1);
+            const currentCount = parseInt(requestsCount.textContent) || 0; updateRequestCount(currentCount + 1);
         });
-
         socket.on('request_accepted', (newContact) => {
-            console.log('Hamari request accept ho gayi:', newContact);
-            showToast(`${newContact.nickname} accepted your friend request!`);
-            loadContacts();
+            showToast(`${newContact.nickname} accepted your friend request!`); loadContacts();
         });
-        
         socket.on('friend status', (data) => {
             const statusDiv = document.getElementById(`status-${data.email}`);
             if (statusDiv) {
-                const dot = statusDiv.querySelector('span:first-child');
-                const text = statusDiv.querySelector('span:last-child');
-                if (data.status === 'Online') {
-                    dot.className = 'h-3 w-3 rounded-full bg-green-500';
-                    text.className = 'text-sm text-green-600';
-                    text.textContent = 'Online';
-                } else {
-                    dot.className = 'h-3 w-3 rounded-full bg-gray-400';
-                    text.className = 'text-sm text-gray-500 dark:text-gray-400';
-                    text.textContent = 'Offline';
-                }
+                const dot = statusDiv.querySelector('span:first-child'); const text = statusDiv.querySelector('span:last-child');
+                if (data.status === 'Online') { dot.className = 'h-3 w-3 rounded-full bg-green-500'; text.className = 'text-sm text-green-600'; text.textContent = 'Online'; } 
+                else { dot.className = 'h-3 w-3 rounded-full bg-gray-400'; text.className = 'text-sm text-gray-500 dark:text-gray-400'; text.textContent = 'Offline'; }
             }
         });
         
-        // 5. Page Load aur Event Listeners
-
-        window.addEventListener('DOMContentLoaded', () => {
-            loadContacts();
-            loadFriendRequests(); 
-        });
-
-        menuBtn.addEventListener('click', () => {
-            menuDropdown.style.display = (menuDropdown.style.display === 'block') ? 'none' : 'block';
-        });
-        
-        window.addEventListener('click', (e) => {
-            // NAYA: 'requestsBtn' aur 'requestsModal' ko bhi check karo
-            if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target) && 
-                !requestsBtn.contains(e.target) && !requestsModal.contains(e.target)) {
-                menuDropdown.style.display = 'none';
-            }
-            
-            // Agar menu khula hai aur bell icon par click kiya, toh menu band karo
-            if (requestsBtn.contains(e.target)) {
-                 menuDropdown.style.display = 'none';
-            }
-            // Agar bell khuli hai aur menu icon par click kiya, toh bell band karo
-            if (menuBtn.contains(e.target)) {
-                requestsModal.classList.add('hidden');
-            }
-        });
-        
-        addFriendFab.addEventListener('click', () => {
-            addFriendModal.classList.remove('hidden');
-        });
-        
-        closeModalBtn.addEventListener('click', () => {
-            addFriendModal.classList.add('hidden');
-        });
-        
-        addFriendModal.addEventListener('click', (e) => {
-            if (e.target === addFriendModal) {
-                addFriendModal.classList.add('hidden');
-            }
-        });
+        // Event Listeners
+        window.addEventListener('DOMContentLoaded', () => { loadContacts(); loadFriendRequests(); });
+        menuBtn.addEventListener('click', () => { menuDropdown.style.display = (menuDropdown.style.display === 'block') ? 'none' : 'block'; });
+        window.addEventListener('click', (e) => { if (!menuBtn.contains(e.target) && !menuDropdown.contains(e.target) && !requestsBtn.contains(e.target) && !requestsModal.contains(e.target)) { menuDropdown.style.display = 'none'; } if (requestsBtn.contains(e.target)) { menuDropdown.style.display = 'none'; } if (menuBtn.contains(e.target)) { requestsModal.classList.add('hidden'); } });
+        addFriendFab.addEventListener('click', () => { addFriendModal.classList.remove('hidden'); });
+        closeModalBtn.addEventListener('click', () => { addFriendModal.classList.add('hidden'); });
+        addFriendModal.addEventListener('click', (e) => { if (e.target === addFriendModal) { addFriendModal.classList.add('hidden'); } });
 
         addFriendForm.addEventListener('submit', async (e) => {
-            e.preventDefault(); 
-            const email = document.getElementById('friendEmail').value;
+            e.preventDefault(); const email = document.getElementById('friendEmail').value;
             const button = addFriendForm.querySelector('button[type="submit"]');
-            
-            button.disabled = true;
-            button.textContent = 'Sending...';
-
+            button.disabled = true; button.textContent = 'Sending...';
             try {
-                const response = await fetch('/add-friend', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ friendEmail: email })
-                });
+                const response = await fetch('/add-friend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ friendEmail: email }) });
                 const result = await response.json();
-                
-                if (response.ok) {
-                    showToast(result.message);
-                    addFriendModal.classList.add('hidden');
-                    addFriendForm.reset();
-                } else {
-                    showToast(`Error: ${result.message}`);
-                }
-            } catch (error) {
-                showToast('Server error. Could not send request.');
-            } finally {
-                button.disabled = false;
-                button.textContent = 'Send Request';
-            }
+                if (response.ok) { showToast(result.message); addFriendModal.classList.add('hidden'); addFriendForm.reset(); } else { showToast(`Error: ${result.message}`); }
+            } catch (error) { showToast('Server error. Could not send request.'); } finally { button.disabled = false; button.textContent = 'Send Request'; }
         });
 
-        requestsBtn.addEventListener('click', () => {
-            requestsModal.classList.remove('hidden');
-            loadFriendRequests(); 
-        });
-        
-        closeRequestsModalBtn.addEventListener('click', () => {
-            requestsModal.classList.add('hidden');
-        });
-        
-        requestsModal.addEventListener('click', (e) => {
-            if (e.target === requestsModal) {
-                requestsModal.classList.add('hidden');
-            }
-        });
-        
+        requestsBtn.addEventListener('click', () => { requestsModal.classList.remove('hidden'); loadFriendRequests(); });
+        closeRequestsModalBtn.addEventListener('click', () => { requestsModal.classList.add('hidden'); });
+        requestsModal.addEventListener('click', (e) => { if (e.target === requestsModal) { requestsModal.classList.add('hidden'); } });
         requestsList.addEventListener('click', handleRequestAction);
+        searchInput.addEventListener('input', (e) => { clearTimeout(searchDebounceTimer); const query = e.target.value; searchDebounceTimer = setTimeout(() => { loadContacts(query); }, 300); });
 
-        searchInput.addEventListener('input', (e) => {
-            clearTimeout(searchDebounceTimer);
-            const query = e.target.value;
-            searchDebounceTimer = setTimeout(() => {
-                loadContacts(query);
-            }, 300);
-        });
+        // Creator Ripple Logic
+        setTimeout(() => {
+            const sigContainer = document.getElementById('creator-signature'); const rippleBg = document.getElementById('ripple-bg');
+            if(sigContainer && rippleBg) {
+                sigContainer.classList.add('reveal-signature'); rippleBg.classList.add('animate-ripple');
+                setTimeout(() => { sigContainer.classList.remove('reveal-signature'); setTimeout(() => rippleBg.classList.remove('animate-ripple'), 1000); }, 2500);
+            }
+        }, 500);
+
+        let tapCount = 0; let tapTimer;
+        const signatureDiv = document.getElementById('creator-signature');
+        const signatureText = document.getElementById('signature-text');
+        if(signatureDiv) {
+            signatureDiv.addEventListener('click', () => {
+                tapCount++; clearTimeout(tapTimer); tapTimer = setTimeout(() => { tapCount = 0; }, 500);
+                if (tapCount === 3) {
+                    const originalText = signatureText.textContent; signatureText.textContent = "Built with 💗 by Taj";
+                    signatureDiv.classList.add('reveal-signature');
+                    setTimeout(() => { signatureDiv.classList.remove('reveal-signature'); setTimeout(() => { signatureText.textContent = originalText; }, 500); }, 2000); tapCount = 0;
+                }
+            });
+        }
     </script>
+</body>
+</html>
