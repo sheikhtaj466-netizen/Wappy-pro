@@ -38,6 +38,31 @@
         #toast { visibility: hidden; min-width: 250px; background-color: #333; color: #fff; text-align: center; border-radius: 4px; padding: 16px; position: fixed; z-index: 100; left: 50%; transform: translateX(-50%); bottom: 80px; transition: visibility 0s, opacity 0.5s linear; opacity: 0; }
         #toast.show { visibility: visible; opacity: 1; }
         .hidden { display: none; }
+
+        /* === WATERMELON SEED LOADER CSS === */
+        #watermelon-loader {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 255, 255, 0.8); z-index: 50;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 50%; display: none; /* Hidden by default */
+        }
+        .dark #watermelon-loader { background: rgba(30, 30, 30, 0.8); }
+        
+        .seed-spinner { width: 60px; height: 60px; position: relative; animation: spin 1.5s linear infinite; }
+        
+        .seed {
+            position: absolute; width: 8px; height: 12px;
+            background-color: #000; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+            left: 26px; top: 0; transform-origin: 4px 30px;
+        }
+        .seed:nth-child(1) { transform: rotate(0deg); }
+        .seed:nth-child(2) { transform: rotate(60deg); }
+        .seed:nth-child(3) { transform: rotate(120deg); }
+        .seed:nth-child(4) { transform: rotate(180deg); }
+        .seed:nth-child(5) { transform: rotate(240deg); }
+        .seed:nth-child(6) { transform: rotate(300deg); }
+        
+        @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900">
@@ -62,11 +87,22 @@
         
         <div id="profile" class="tab-content active">
             <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex flex-col items-center">
-                <img id="avatar-img" src="placeholder.jpg" alt="Profile Picture" class="w-32 h-32 rounded-full object-cover mb-4 border-4 border-green-500">
+                
+                <div class="relative w-32 h-32 mb-4">
+                    <img id="avatar-img" src="placeholder.jpg" alt="Profile Picture" class="w-full h-full rounded-full object-cover border-4 border-green-500 dark:border-green-400 shadow-lg">
+                    
+                    <div id="watermelon-loader">
+                        <div class="seed-spinner">
+                            <div class="seed"></div><div class="seed"></div><div class="seed"></div>
+                            <div class="seed"></div><div class="seed"></div><div class="seed"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <h2 id="display-name" class="text-3xl font-bold text-gray-800 dark:text-white mb-2">Loading...</h2>
                 <p id="email" class="text-lg text-gray-500 dark:text-gray-400 mb-6">Loading...</p>
 
-                <form action="/api/upload-avatar" method="POST" enctype="multipart/form-data" class="w-full border-t dark:border-gray-700 pt-6">
+                <form action="/api/upload-avatar" method="POST" enctype="multipart/form-data" class="w-full border-t dark:border-gray-700 pt-6" id="avatar-upload-form">
                     <label for="avatar-input" class="block text-gray-700 dark:text-gray-300 mb-2">Change Profile Picture:</label>
                     <input type="file" id="avatar-input" name="avatar" class="w-full mb-4 p-2 border rounded-lg bg-white dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600" accept="image/png, image/jpeg">
                     <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Upload Photo</button>
@@ -107,7 +143,6 @@
                         <span id="theme-toggle-knob" class="inline-block w-4 h-4 transform bg-white rounded-full transition-transform translate-x-1 dark:translate-x-6"></span>
                     </button>
                 </div>
-                
                 <div class="w-full flex justify-between items-center pt-6 border-t dark:border-gray-700">
                     <span class="text-xl font-bold text-gray-800 dark:text-white">Current Mood 😌</span>
                     <select id="mood-select" class="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-green-500">
@@ -156,6 +191,10 @@
         const tabContents = document.querySelectorAll('.tab-content');
         const deleteAccountBtn = document.getElementById('delete-account-btn');
         const moodSelect = document.getElementById('mood-select');
+        
+        // NAYA: Loader & Form
+        const uploadForm = document.getElementById('avatar-upload-form');
+        const loader = document.getElementById('watermelon-loader');
 
         function showToast(message) {
             toast.textContent = message;
@@ -193,6 +232,17 @@
                 if (response.ok) { showToast(result.message); } else { showToast(`Error: ${result.message}`); }
             } catch (error) { showToast('Server error while saving.'); }
         });
+        
+        // NAYA: Loader Logic
+        if(uploadForm) {
+            uploadForm.addEventListener('submit', () => {
+                loader.style.display = 'flex'; // Seeds dikhao
+                const btn = uploadForm.querySelector('button');
+                btn.textContent = 'Planting Seeds...';
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+            });
+        }
         
         themeToggle.addEventListener('click', () => {
             const isDark = document.documentElement.classList.toggle('dark');
