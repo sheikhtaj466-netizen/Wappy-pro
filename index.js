@@ -20,14 +20,14 @@ const PORT = process.env.PORT || 3000;
 
 // --- CORS FIX FOR MOBILE ---
 app.use(cors({
-    origin: '*', // Development ke liye sab allow kar rahe hain
+    origin: '*', 
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true
 }));
 
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "*" } // Socket ke liye bhi CORS allow kiya
+    cors: { origin: "*" } 
 });
 const JWT_SECRET = 'your-very-secret-key-12345';
 
@@ -36,7 +36,19 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ MongoDB Connected!'))
   .catch(err => console.error('❌ DB Error:', err));
 
-// --- SCHEMAS ---
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(express.static(path.join(process.cwd(), 'public')));
+
+// --- MIDDLEWARE ---
+const protectRoute = (req, res, next) => {
+  const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({message: "Not authorized"});
+  try { const decoded = jwt.verify(token, JWT_SECRET); req.user = decoded; next(); } 
+  catch (error) { res.status(401).json({message: "Invalid token"}); }
+};
+// --- USER SCHEMA (UPDATED) ---
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -44,14 +56,27 @@ const userSchema = new mongoose.Schema({
     avatarUrl: { type: String, default: "" },
     status: { type: String, default: "Offline" },
     lastSeen: { type: Number, default: 0 },
+    
     wappyId: { type: String, unique: true, sparse: true }, 
     isIdHidden: { type: Boolean, default: false }, 
+    
     friends: [{ type: String }], 
+    
+    // 👇 Pending Requests
     friendRequests: [{
-        senderEmail: String, senderId: String,
-        avatarUrl: String, displayName: String,
+        senderEmail: String,
+        senderId: String,
+        avatarUrl: String,
+        displayName: String,
         timestamp: { type: Number, default: Date.now }
     }],
+
+    // 👇 Ignored Requests (For 24h Cooldown)
+    ignoredRequests: [{
+        email: String,
+        timestamp: { type: Number, default: Date.now }
+    }],
+
     settings: {
         privacy: { 
             lastSeen: { type: String, default: 'Contacts' }, 
@@ -79,50 +104,29 @@ const contactSchema = new mongoose.Schema({
     ownerEmail: String, friendEmail: String, nickname: String, isBlocked: {type: Boolean, default: false}
 });
 const Contact = mongoose.model('Contact', contactSchema);
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-app.use(express.static(path.join(process.cwd(), 'public')));
-// --- MIDDLEWARE ---
-const protectRoute = (req, res, next) => {
-  const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({message: "Not authorized"});
-  try { const decoded = jwt.verify(token, JWT_SECRET); req.user = decoded; next(); } 
-  catch (error) { res.status(401).json({message: "Invalid token"}); }
-};
-
 // --- AUTH ROUTES ---
 
-// 🆕 REGISTER ROUTE (New Feature Added)
+// Register
 app.post('/api/native/register', async (req, res) => {
     try {
         const { email, password } = req.body;
-        // Check if user exists
         const existingUser = await User.findOne({ email });
         if (existingUser) return res.status(400).json({ message: 'User already exists' });
 
-        // Hash Password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create User
         const newUser = new User({
-            email,
-            password: hashedPassword,
-            displayName: email.split('@')[0] // Default name email ka pehla hissa
+            email, password: hashedPassword, displayName: email.split('@')[0]
         });
         await newUser.save();
 
-        // Generate Token
         const token = jwt.sign({ email: newUser.email }, JWT_SECRET);
         res.status(201).json({ message: 'User created successfully', token, user: newUser });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error during registration' });
-    }
+    } catch (error) { res.status(500).json({ message: 'Server error during registration' }); }
 });
 
-// LOGIN ROUTE
+// Login
 app.post('/api/native/login', async (req, res) => {
   try {
       const { email, password } = req.body;
@@ -133,22 +137,13 @@ app.post('/api/native/login', async (req, res) => {
       res.json({ message: 'Success', token, user });
   } catch (e) { res.status(500).json({ message: "Server Error" }); }
 });
+
 // Get Profile
 app.get('/api/me', protectRoute, async (req, res) => {
   try {
       let user = await User.findOne({ email: req.user.email }).select('-password');
       res.json(user);
   } catch (e) { res.status(500).json({ message: "Error fetching profile" }); }
-});
-
-// Check ID Availability
-app.post('/api/check-id', async (req, res) => {
-    const { wappyId } = req.body;
-    const regex = /^[a-z0-9_]{4,16}$/;
-    if (!regex.test(wappyId)) return res.json({ available: false, reason: 'format' });
-    const user = await User.findOne({ wappyId: '@' + wappyId });
-    if (user) return res.json({ available: false, reason: 'taken' });
-    res.json({ available: true });
 });
 
 // Update Settings
@@ -160,58 +155,92 @@ app.post('/api/update-settings', protectRoute, async (req, res) => {
         if (type === 'privacy') {
             if (data.wappyId) user.wappyId = data.wappyId;
             if (data.displayName) user.displayName = data.displayName;
-            if (data.isIdHidden !== undefined) user.isIdHidden = data.isIdHidden;
             if(user.settings.privacy) user.settings.privacy = { ...user.settings.privacy, ...data };
-        } else if (type === 'notifications') {
-            user.settings.notifications = { ...user.settings.notifications, ...data };
-        }
+        } 
         await user.save();
         res.json({ message: "Updated", settings: user.settings });
     } catch (e) { res.status(500).json({ message: "Error" }); }
 });
+// --- FRIEND REQUEST SYSTEM ---
 
-// Search User
-app.get('/api/search-user', protectRoute, async (req, res) => {
-    const { query } = req.query;
-    const user = await User.findOne({ wappyId: query, isIdHidden: false }).select('email displayName wappyId avatarUrl');
-    if (!user) return res.status(404).json({ message: "User not found or hidden" });
-    res.json(user);
-});
-
-// Send Request
+// Send Request (With 24h Ignored Check)
 app.post('/api/send-request', protectRoute, async (req, res) => {
     const { targetEmail } = req.body;
     const sender = await User.findOne({ email: req.user.email });
     const target = await User.findOne({ email: targetEmail });
+
     if (!target) return res.status(404).json({ message: "User not found" });
     
-    const exists = target.friendRequests.find(r => r.senderEmail === sender.email);
-    if (exists || target.friends.includes(sender.email)) return res.status(400).json({ message: "Request already sent or friends" });
+    // Check if already friends
+    if (target.friends.includes(sender.email)) return res.status(400).json({ message: "Already connected!" });
 
+    // Check if request pending
+    const exists = target.friendRequests.find(r => r.senderEmail === sender.email);
+    if (exists) return res.status(400).json({ message: "Request already sent ✔" });
+
+    // 🔥 Check 24h Ignore Cooldown
+    const ignoredEntry = target.ignoredRequests.find(r => r.email === sender.email);
+    if (ignoredEntry) {
+        const timeDiff = Date.now() - ignoredEntry.timestamp;
+        const hoursLeft = 24 - (timeDiff / (1000 * 60 * 60));
+        
+        if (timeDiff < 24 * 60 * 60 * 1000) {
+            return res.status(400).json({ message: `Request ignored. Try again in ${Math.ceil(hoursLeft)} hours.` });
+        } else {
+            // Remove from ignore list after 24h
+            target.ignoredRequests = target.ignoredRequests.filter(r => r.email !== sender.email);
+        }
+    }
+
+    // Add Request
     target.friendRequests.push({
         senderEmail: sender.email, senderId: sender.wappyId,
         avatarUrl: sender.avatarUrl, displayName: sender.displayName
     });
     await target.save();
-    res.json({ message: "Request Sent! 🍉" });
+
+    // 🔔 Notify Target User via Socket (For Soft Banner)
+    io.to(targetEmail).emit('new request', { 
+        senderName: sender.displayName, 
+        senderId: sender.wappyId 
+    });
+
+    res.json({ message: "Request Sent ✔" });
 });
 
-// Handle Request
+// Handle Request (Accept / Ignore)
 app.post('/api/handle-request', protectRoute, async (req, res) => {
     const { senderEmail, action } = req.body; 
     const me = await User.findOne({ email: req.user.email });
     const sender = await User.findOne({ email: senderEmail });
+
+    // Remove from pending
     me.friendRequests = me.friendRequests.filter(r => r.senderEmail !== senderEmail);
+
     if (action === 'accept') {
+        // ❤️ Mutual Add
         if (!me.friends.includes(senderEmail)) me.friends.push(senderEmail);
         if (!sender.friends.includes(me.email)) sender.friends.push(me.email);
         await sender.save();
-        const newContact = new Contact({ ownerEmail: me.email, friendEmail: senderEmail, nickname: sender.displayName });
-        await newContact.save();
+
+        // Create Contacts for Chat
+        const c1 = new Contact({ ownerEmail: me.email, friendEmail: senderEmail, nickname: sender.displayName });
+        await c1.save();
+        const c2 = new Contact({ ownerEmail: senderEmail, friendEmail: me.email, nickname: me.displayName });
+        await c2.save();
+
+        await me.save();
+        res.json({ message: "Connected 🤝", status: 'accepted' });
+
+    } else if (action === 'ignore') {
+        // ✖️ Add to Ignored List
+        me.ignoredRequests.push({ email: senderEmail, timestamp: Date.now() });
+        await me.save();
+        res.json({ message: "Request Ignored", status: 'ignored' });
     }
-    await me.save();
-    res.json({ message: action === 'accept' ? "Friend Added! 💚" : "Removed" });
 });
+// --- CHAT DATA ROUTES ---
+
 // Chat List
 app.get('/api/chats', protectRoute, async (req, res) => {
     try { const myEmail = req.user.email; 
@@ -252,14 +281,8 @@ app.get('/api/messages/:id', protectRoute, async (req, res) => {
     res.json({ messages: messages });
 });
 
-// Delete Account
-app.delete('/api/delete-account', protectRoute, async (req, res) => {
-    try { await User.deleteOne({ email: req.user.email }); res.json({ message: "Account deleted successfully" }); } catch (e) { res.status(500).json({ message: "Error deleting account" }); }
-});
-
-// --- SOCKET.IO (REAL-TIME FIX FOR MOBILE) ---
+// --- SOCKET.IO ---
 io.use((socket, next) => {
-    // Mobile apps "auth" object bhejte hain, Web cookies bhejta hai. Dono check karenge.
     const token = socket.handshake.auth?.token || 
                   socket.handshake.headers.authorization?.split(" ")[1] ||
                   socket.handshake.headers.cookie?.split('token=')[1];
@@ -268,29 +291,32 @@ io.use((socket, next) => {
     
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        socket.userEmail = decoded.email; // Socket object me user save kar liya
+        socket.userEmail = decoded.email; 
         next();
-    } catch (err) {
-        next(new Error("Authentication error"));
-    }
+    } catch (err) { next(new Error("Authentication error")); }
 });
 
 io.on('connection', (socket) => {
-    console.log(`⚡ User Connected: ${socket.userEmail}`);
-    socket.join(socket.userEmail); // Apne email ke room me join karo
+    // User joins their own room (email) for notifications
+    socket.join(socket.userEmail);
+    
+    socket.on('join room', (room) => socket.join(room));
 
     socket.on('send message', async (data) => {
         const { receiverId, text } = data;
-        const senderEmail = socket.userEmail; // Ab hume pakka pata hai sender kaun hai
+        const senderEmail = socket.userEmail;
 
         const newMsg = new Message({ 
-            senderEmail,
-            receiverEmail: receiverId, text, timestamp: Date.now(), status: 'sent' 
+            senderEmail, receiverEmail: receiverId, text, timestamp: Date.now(), status: 'sent' 
         });
         await newMsg.save();
 
-        // Real-time bhej do
         io.to(receiverId).emit('new message', { ...data, senderEmail, status: 'received', timestamp: Date.now() });
+    });
+
+    socket.on('friend typing', () => {
+        // Broadcast to rooms this user is in (simplified)
+        // Note: For production, send to specific receiver room
     });
 });
 
