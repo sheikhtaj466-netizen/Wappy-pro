@@ -18,7 +18,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- CORS FIX FOR MOBILE ---
+// --- CORS SETUP ---
 app.use(cors({
     origin: '*', 
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -48,7 +48,7 @@ const protectRoute = (req, res, next) => {
   try { const decoded = jwt.verify(token, JWT_SECRET); req.user = decoded; next(); } 
   catch (error) { res.status(401).json({message: "Invalid token"}); }
 };
-// --- USER SCHEMA (UPDATED) ---
+// --- USER SCHEMA ---
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -62,7 +62,7 @@ const userSchema = new mongoose.Schema({
     
     friends: [{ type: String }], 
     
-    // 👇 Pending Requests
+    // Pending Requests
     friendRequests: [{
         senderEmail: String,
         senderId: String,
@@ -71,7 +71,7 @@ const userSchema = new mongoose.Schema({
         timestamp: { type: Number, default: Date.now }
     }],
 
-    // 👇 Ignored Requests (For 24h Cooldown)
+    // Ignored Requests (24h Cooldown)
     ignoredRequests: [{
         email: String,
         timestamp: { type: Number, default: Date.now }
@@ -100,8 +100,15 @@ const messageSchema = new mongoose.Schema({
 });
 const Message = mongoose.model('Message', messageSchema);
 
+// --- 🔥 UPDATED CONTACT SCHEMA ---
 const contactSchema = new mongoose.Schema({
-    ownerEmail: String, friendEmail: String, nickname: String, isBlocked: {type: Boolean, default: false}
+    ownerEmail: String, 
+    friendEmail: String, 
+    nickname: String, 
+    isBlocked: { type: Boolean, default: false },
+    
+    // 👇 Naya Signature Logic
+    signature: { type: String, default: 'Friends' } 
 });
 const Contact = mongoose.model('Contact', contactSchema);
 // --- AUTH ROUTES ---
@@ -170,24 +177,19 @@ app.post('/api/send-request', protectRoute, async (req, res) => {
     const target = await User.findOne({ email: targetEmail });
 
     if (!target) return res.status(404).json({ message: "User not found" });
-    
-    // Check if already friends
     if (target.friends.includes(sender.email)) return res.status(400).json({ message: "Already connected!" });
 
-    // Check if request pending
     const exists = target.friendRequests.find(r => r.senderEmail === sender.email);
     if (exists) return res.status(400).json({ message: "Request already sent ✔" });
 
-    // 🔥 Check 24h Ignore Cooldown
+    // 24h Ignore Check
     const ignoredEntry = target.ignoredRequests.find(r => r.email === sender.email);
     if (ignoredEntry) {
         const timeDiff = Date.now() - ignoredEntry.timestamp;
         const hoursLeft = 24 - (timeDiff / (1000 * 60 * 60));
-        
         if (timeDiff < 24 * 60 * 60 * 1000) {
             return res.status(400).json({ message: `Request ignored. Try again in ${Math.ceil(hoursLeft)} hours.` });
         } else {
-            // Remove from ignore list after 24h
             target.ignoredRequests = target.ignoredRequests.filter(r => r.email !== sender.email);
         }
     }
@@ -199,7 +201,7 @@ app.post('/api/send-request', protectRoute, async (req, res) => {
     });
     await target.save();
 
-    // 🔔 Notify Target User via Socket (For Soft Banner)
+    // Notify Target User via Socket
     io.to(targetEmail).emit('new request', { 
         senderName: sender.displayName, 
         senderId: sender.wappyId 
@@ -208,40 +210,46 @@ app.post('/api/send-request', protectRoute, async (req, res) => {
     res.json({ message: "Request Sent ✔" });
 });
 
-// Handle Request (Accept / Ignore)
+// 🔥 HANDLE REQUEST (UPDATED WITH SIGNATURE)
 app.post('/api/handle-request', protectRoute, async (req, res) => {
-    const { senderEmail, action } = req.body; 
+    const { senderEmail, action, signature } = req.body; // <-- Signature receive kiya
     const me = await User.findOne({ email: req.user.email });
     const sender = await User.findOne({ email: senderEmail });
 
-    // Remove from pending
     me.friendRequests = me.friendRequests.filter(r => r.senderEmail !== senderEmail);
 
     if (action === 'accept') {
-        // ❤️ Mutual Add
         if (!me.friends.includes(senderEmail)) me.friends.push(senderEmail);
         if (!sender.friends.includes(me.email)) sender.friends.push(me.email);
         await sender.save();
 
-        // Create Contacts for Chat
-        const c1 = new Contact({ ownerEmail: me.email, friendEmail: senderEmail, nickname: sender.displayName });
+        // 🔥 Save Signature
+        const chosenSig = signature || 'Friends';
+
+        const c1 = new Contact({ ownerEmail: me.email, friendEmail: senderEmail, nickname: sender.displayName, signature: chosenSig });
         await c1.save();
-        const c2 = new Contact({ ownerEmail: senderEmail, friendEmail: me.email, nickname: me.displayName });
+        const c2 = new Contact({ ownerEmail: senderEmail, friendEmail: me.email, nickname: me.displayName, signature: chosenSig });
         await c2.save();
 
         await me.save();
+        
+        // Notify Sender
+        io.to(senderEmail).emit('request accepted', { 
+            accepterName: me.displayName, 
+            signature: chosenSig 
+        });
+
         res.json({ message: "Connected 🤝", status: 'accepted' });
 
     } else if (action === 'ignore') {
-        // ✖️ Add to Ignored List
         me.ignoredRequests.push({ email: senderEmail, timestamp: Date.now() });
         await me.save();
         res.json({ message: "Request Ignored", status: 'ignored' });
     }
 });
-// --- CHAT DATA ROUTES ---
+// --- DATA ROUTES ---
 
-// Chat List
+// Chat List (Returns Signature)
 app.get('/api/chats', protectRoute, async (req, res) => {
     try { const myEmail = req.user.email; 
         const allMessages = await Message.find({ $and: [ { $or: [ { senderEmail: myEmail }, { receiverEmail: myEmail } ]} ]}).sort({ timestamp: -1 }).lean(); 
@@ -255,20 +263,30 @@ app.get('/api/chats', protectRoute, async (req, res) => {
             const contact = await Contact.findOne({ ownerEmail: myEmail, friendEmail: chat.id }).lean();
             const friendUser = await User.findOne({ email: chat.id }).lean();
             if (!friendUser) return null;
-            return { ...chat, nickname: contact ? contact.nickname : friendUser.displayName, avatarUrl: friendUser.avatarUrl };
+            return { 
+                ...chat, 
+                nickname: contact ? contact.nickname : friendUser.displayName, 
+                avatarUrl: friendUser.avatarUrl,
+                signature: contact ? contact.signature : 'Friends' // 🔥 Signature Sent
+            };
         }));
         res.json(detailedChatList.filter(Boolean));
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
 
-// Contacts List
+// Contacts List (Returns Signature)
 app.get('/api/contacts', protectRoute, async (req, res) => {
     try {
         const myContacts = await Contact.find({ ownerEmail: req.user.email }).lean();
         const detailedContacts = await Promise.all(myContacts.map(async (contact) => {
             const friendUser = await User.findOne({ email: contact.friendEmail }).lean();
             if (!friendUser) return null;
-            return { ...contact, status: friendUser.status, avatarUrl: friendUser.avatarUrl };
+            return { 
+                ...contact, 
+                status: friendUser.status, 
+                avatarUrl: friendUser.avatarUrl,
+                signature: contact.signature // 🔥 Signature Sent
+            };
         }));
         res.json(detailedContacts.filter(Boolean));
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
@@ -281,14 +299,13 @@ app.get('/api/messages/:id', protectRoute, async (req, res) => {
     res.json({ messages: messages });
 });
 
-// --- SOCKET.IO ---
+// --- SOCKET ---
 io.use((socket, next) => {
     const token = socket.handshake.auth?.token || 
                   socket.handshake.headers.authorization?.split(" ")[1] ||
                   socket.handshake.headers.cookie?.split('token=')[1];
 
     if (!token) return next(new Error("Authentication error"));
-    
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
         socket.userEmail = decoded.email; 
@@ -297,27 +314,20 @@ io.use((socket, next) => {
 });
 
 io.on('connection', (socket) => {
-    // User joins their own room (email) for notifications
     socket.join(socket.userEmail);
-    
     socket.on('join room', (room) => socket.join(room));
 
     socket.on('send message', async (data) => {
         const { receiverId, text } = data;
         const senderEmail = socket.userEmail;
-
         const newMsg = new Message({ 
             senderEmail, receiverEmail: receiverId, text, timestamp: Date.now(), status: 'sent' 
         });
         await newMsg.save();
-
         io.to(receiverId).emit('new message', { ...data, senderEmail, status: 'received', timestamp: Date.now() });
     });
 
-    socket.on('friend typing', () => {
-        // Broadcast to rooms this user is in (simplified)
-        // Note: For production, send to specific receiver room
-    });
+    socket.on('friend typing', () => { /* Typing logic */ });
 });
 
 server.listen(PORT, () => console.log(`🍉 Wappy Server Running on Port ${PORT}`));
