@@ -27,7 +27,7 @@ app.use(cors({
 const server = http.createServer(app);
 const io = new Server(server, { 
     cors: { origin: "*" },
-    maxHttpBufferSize: 1e8 // 100MB limit for images/audio
+    maxHttpBufferSize: 1e8 
 });
 const JWT_SECRET = process.env.JWT_SECRET || 'your-very-secret-key-12345';
 
@@ -69,14 +69,15 @@ const messageSchema = new mongoose.Schema({
     receiverEmail: String, receiverGroupId: String,
     deletedFor: [{ type: String }],
     isDeleted: { type: Boolean, default: false },
-    type: { type: String, default: 'text' }, // types: text, audio, image
+    type: { type: String, default: 'text' },
     audioData: { type: String },
-    imageData: { type: String } // 🔥 NEW: Image data field added
+    imageData: { type: String }
 });
 const Message = mongoose.model('Message', messageSchema);
 
 const contactSchema = new mongoose.Schema({
-    ownerEmail: String, friendEmail: String, nickname: String, isBlocked: { type: Boolean, default: false },
+    ownerEmail: String, friendEmail: String, nickname: String, 
+    isBlocked: { type: Boolean, default: false }, // 🔥 Block Status
     signature: { type: String, default: 'Friends' } 
 });
 const Contact = mongoose.model('Contact', contactSchema);
@@ -91,7 +92,6 @@ app.post('/api/update-settings', protectRoute, async (req, res) => {
     try {
         const { type, data } = req.body;
         const user = await User.findOne({ email: req.user.email });
-        
         if (type === 'privacy') {
             if (data.wappyId) user.wappyId = data.wappyId;
             if (data.displayName) user.displayName = data.displayName;
@@ -102,12 +102,40 @@ app.post('/api/update-settings', protectRoute, async (req, res) => {
             if (data.avatarUrl) user.avatarUrl = data.avatarUrl;
             if (data.status) user.status = data.status;
         }
-        
         await user.save();
         res.json({ message: "Updated", user });
     } catch (e) { res.status(500).json({ message: "Error" }); }
 });
 
+// 🔥 BLOCK / UNBLOCK ROUTES (NEW)
+app.post('/api/user/block', protectRoute, async (req, res) => {
+    try {
+        const { targetEmail } = req.body;
+        const myEmail = req.user.email;
+        // Update my contact list to show I blocked them
+        await Contact.findOneAndUpdate(
+            { ownerEmail: myEmail, friendEmail: targetEmail },
+            { isBlocked: true },
+            { upsert: true, new: true }
+        );
+        res.json({ message: "Blocked" });
+    } catch (e) { res.status(500).json({ message: "Error blocking" }); }
+});
+
+app.post('/api/user/unblock', protectRoute, async (req, res) => {
+    try {
+        const { targetEmail } = req.body;
+        const myEmail = req.user.email;
+        await Contact.findOneAndUpdate(
+            { ownerEmail: myEmail, friendEmail: targetEmail },
+            { isBlocked: false },
+            { new: true }
+        );
+        res.json({ message: "Unblocked" });
+    } catch (e) { res.status(500).json({ message: "Error unblocking" }); }
+});
+
+// FRIEND REQUESTS
 app.post('/api/send-request', protectRoute, async (req, res) => { const { targetEmail } = req.body; const sender = await User.findOne({ email: req.user.email }); const target = await User.findOne({ email: targetEmail }); if (!target) return res.status(404).json({ message: "User not found" }); if (target.friends.includes(sender.email)) return res.status(400).json({ message: "Already connected!" }); const exists = target.friendRequests.find(r => r.senderEmail === sender.email); if (exists) return res.status(400).json({ message: "Request already sent" }); const ignoredEntry = target.ignoredRequests.find(r => r.email === sender.email); if (ignoredEntry) { const timeDiff = Date.now() - ignoredEntry.timestamp; if (timeDiff < 24 * 60 * 60 * 1000) return res.status(400).json({ message: `Request ignored. Try later.` }); else target.ignoredRequests = target.ignoredRequests.filter(r => r.email !== sender.email); } target.friendRequests.push({ senderEmail: sender.email, senderId: sender.wappyId, avatarUrl: sender.avatarUrl, displayName: sender.displayName }); await target.save(); io.to(targetEmail).emit('new request', { senderName: sender.displayName, senderId: sender.wappyId }); res.json({ message: "Sent" }); });
 app.post('/api/handle-request', protectRoute, async (req, res) => { const { senderEmail, action, signature } = req.body; const me = await User.findOne({ email: req.user.email }); const sender = await User.findOne({ email: senderEmail }); me.friendRequests = me.friendRequests.filter(r => r.senderEmail !== senderEmail); if (action === 'accept') { if (!me.friends.includes(senderEmail)) me.friends.push(senderEmail); if (!sender.friends.includes(me.email)) sender.friends.push(me.email); await sender.save(); const chosenSig = signature || 'Friends'; const c1 = new Contact({ ownerEmail: me.email, friendEmail: senderEmail, nickname: sender.displayName, signature: chosenSig }); await c1.save(); const c2 = new Contact({ ownerEmail: senderEmail, friendEmail: me.email, nickname: me.displayName, signature: chosenSig }); await c2.save(); await me.save(); io.to(senderEmail).emit('request accepted', { accepterName: me.displayName, signature: chosenSig }); res.json({ message: "Connected", status: 'accepted' }); } else { await me.save(); res.json({ message: "Ignored" }); } });
 
@@ -116,7 +144,9 @@ app.get('/api/chats', protectRoute, async (req, res) => {
     try { const myEmail = req.user.email; const allMessages = await Message.find({ $and: [ { $or: [ { senderEmail: myEmail }, { receiverEmail: myEmail } ]}, { deletedFor: { $ne: myEmail } } ]}).sort({ timestamp: -1 }).lean(); const conversations = new Map(); allMessages.forEach(msg => { let convoId = msg.senderEmail === myEmail ? msg.receiverEmail : msg.senderEmail; if (!conversations.has(convoId)) { conversations.set(convoId, { id: convoId, text: msg.isDeleted ? "🚫 Message deleted" : (msg.type === 'audio' ? "🎤 Voice Message" : (msg.type === 'image' ? "📷 Photo" : msg.text)), timestamp: msg.timestamp }); } }); const chatList = Array.from(conversations.values()); let detailedChatList = await Promise.all(chatList.map(async (chat) => { const contact = await Contact.findOne({ ownerEmail: myEmail, friendEmail: chat.id }).lean(); const friendUser = await User.findOne({ email: chat.id }).lean(); if (!friendUser) return null; return { ...chat, nickname: contact ? contact.nickname : friendUser.displayName, avatarUrl: friendUser.avatarUrl, signature: contact ? contact.signature : 'Friends' }; })); res.json(detailedChatList.filter(Boolean)); } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
 
-app.get('/api/contacts', protectRoute, async (req, res) => { try { const myContacts = await Contact.find({ ownerEmail: req.user.email }).lean(); const detailedContacts = await Promise.all(myContacts.map(async (contact) => { const friendUser = await User.findOne({ email: contact.friendEmail }).lean(); if (!friendUser) return null; return { ...contact, status: friendUser.status, lastSeen: friendUser.lastSeen, avatarUrl: friendUser.avatarUrl, signature: contact.signature }; })); res.json(detailedContacts.filter(Boolean)); } catch (error) { res.status(500).json({ message: 'Server error' }); } });
+// 🔥 CONTACTS (Include isBlocked)
+app.get('/api/contacts', protectRoute, async (req, res) => { try { const myContacts = await Contact.find({ ownerEmail: req.user.email }).lean(); const detailedContacts = await Promise.all(myContacts.map(async (contact) => { const friendUser = await User.findOne({ email: contact.friendEmail }).lean(); if (!friendUser) return null; return { ...contact, status: friendUser.status, lastSeen: friendUser.lastSeen, avatarUrl: friendUser.avatarUrl, signature: contact.signature, isBlocked: contact.isBlocked }; })); res.json(detailedContacts.filter(Boolean)); } catch (error) { res.status(500).json({ message: 'Server error' }); } });
+
 app.get('/api/messages/:id', protectRoute, async (req, res) => { const myEmail = req.user.email; const id = req.params.id; const messages = await Message.find({ $and: [ { $or: [ { senderEmail: myEmail, receiverEmail: id }, { senderEmail: id, receiverEmail: myEmail } ] }, { deletedFor: { $ne: myEmail } } ] }).sort({ timestamp: -1 }).limit(50).lean(); res.json({ messages: messages }); });
 
 app.delete('/api/message/:id', protectRoute, async (req, res) => {
@@ -139,12 +169,18 @@ io.on('connection', async (socket) => {
 
     socket.on('join room', (room) => socket.join(room));
     
-    // 🔥 UPDATED: Added imageData handling
     socket.on('send message', async (data) => { 
         const { receiverId, text, type, audioData, imageData } = data; 
         const senderEmail = socket.userEmail;
-        
-        // Determine text label for notifications
+
+        // 🔥 CHECK IF BLOCKED
+        // 1. Check if RECEIVER has blocked SENDER
+        const receiverView = await Contact.findOne({ ownerEmail: receiverId, friendEmail: senderEmail });
+        if (receiverView && receiverView.isBlocked) {
+            // Blocked! Do not send or save message.
+            return; 
+        }
+
         let messageText = text;
         if (!messageText) {
             if (type === 'audio') messageText = "🎤 Voice Message";
@@ -157,13 +193,11 @@ io.on('connection', async (socket) => {
             text: messageText, 
             type: type || 'text', 
             audioData, 
-            imageData, // Saving image base64
+            imageData,
             timestamp: Date.now(), 
             status: 'sent' 
         }); 
-        
         await newMsg.save(); 
-        
         io.to(receiverId).emit('new message', { ...data, text: messageText, senderEmail, status: 'received', timestamp: Date.now() }); 
     });
 
