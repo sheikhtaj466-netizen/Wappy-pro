@@ -18,19 +18,24 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'], credentials: true }));
+app.use(cors({
+    origin: '*', 
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
+}));
 
 const server = http.createServer(app);
-// 🔥 MAX BUFFER SIZE BADHAYA (Audio ke liye)
 const io = new Server(server, { 
     cors: { origin: "*" },
-    maxHttpBufferSize: 1e8 // 100 MB limit
+    maxHttpBufferSize: 1e8 
 });
 const JWT_SECRET = 'your-very-secret-key-12345';
 
-mongoose.connect(process.env.MONGODB_URI).then(() => console.log('✅ MongoDB Connected!')).catch(err => console.error('❌ DB Error:', err));
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('✅ MongoDB Connected!'))
+  .catch(err => console.error('❌ DB Error:', err));
 
-app.use(express.json({ limit: '50mb' })); // JSON limit badhayi
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(process.cwd(), 'public')));
@@ -63,9 +68,8 @@ const messageSchema = new mongoose.Schema({
     receiverEmail: String, receiverGroupId: String,
     deletedFor: [{ type: String }],
     isDeleted: { type: Boolean, default: false },
-    // 👇 NEW: Audio Fields
-    type: { type: String, default: 'text' }, // 'text' or 'audio'
-    audioData: { type: String } // Base64 String
+    type: { type: String, default: 'text' },
+    audioData: { type: String }
 });
 const Message = mongoose.model('Message', messageSchema);
 
@@ -84,23 +88,50 @@ app.post('/api/send-request', protectRoute, async (req, res) => { const { target
 app.post('/api/handle-request', protectRoute, async (req, res) => { const { senderEmail, action, signature } = req.body; const me = await User.findOne({ email: req.user.email }); const sender = await User.findOne({ email: senderEmail }); me.friendRequests = me.friendRequests.filter(r => r.senderEmail !== senderEmail); if (action === 'accept') { if (!me.friends.includes(senderEmail)) me.friends.push(senderEmail); if (!sender.friends.includes(me.email)) sender.friends.push(me.email); await sender.save(); const chosenSig = signature || 'Friends'; const c1 = new Contact({ ownerEmail: me.email, friendEmail: senderEmail, nickname: sender.displayName, signature: chosenSig }); await c1.save(); const c2 = new Contact({ ownerEmail: senderEmail, friendEmail: me.email, nickname: me.displayName, signature: chosenSig }); await c2.save(); await me.save(); io.to(senderEmail).emit('request accepted', { accepterName: me.displayName, signature: chosenSig }); res.json({ message: "Connected", status: 'accepted' }); } else { await me.save(); res.json({ message: "Ignored" }); } });
 // --- DATA ROUTES ---
 app.get('/api/chats', protectRoute, async (req, res) => {
-    try { const myEmail = req.user.email; const allMessages = await Message.find({ $and: [ { $or: [ { senderEmail: myEmail }, { receiverEmail: myEmail } ]}, { deletedFor: { $ne: myEmail } } ]}).sort({ timestamp: -1 }).lean(); const conversations = new Map(); 
-    allMessages.forEach(msg => { 
-        let convoId = msg.senderEmail === myEmail ? msg.receiverEmail : msg.senderEmail; 
-        if (!conversations.has(convoId)) { 
-            // Show '🎤 Voice Message' if audio
-            let preview = msg.isDeleted ? "🚫 Message deleted" : (msg.type === 'audio' ? "🎤 Voice Message" : msg.text);
-            conversations.set(convoId, { id: convoId, text: preview, timestamp: msg.timestamp }); 
-        } 
-    }); 
-    const chatList = Array.from(conversations.values()); let detailedChatList = await Promise.all(chatList.map(async (chat) => { const contact = await Contact.findOne({ ownerEmail: myEmail, friendEmail: chat.id }).lean(); const friendUser = await User.findOne({ email: chat.id }).lean(); if (!friendUser) return null; return { ...chat, nickname: contact ? contact.nickname : friendUser.displayName, avatarUrl: friendUser.avatarUrl, signature: contact ? contact.signature : 'Friends' }; })); res.json(detailedChatList.filter(Boolean)); } catch (error) { res.status(500).json({ message: 'Server error' }); }
+    try { const myEmail = req.user.email; const allMessages = await Message.find({ $and: [ { $or: [ { senderEmail: myEmail }, { receiverEmail: myEmail } ]}, { deletedFor: { $ne: myEmail } } ]}).sort({ timestamp: -1 }).lean(); const conversations = new Map(); allMessages.forEach(msg => { let convoId = msg.senderEmail === myEmail ? msg.receiverEmail : msg.senderEmail; if (!conversations.has(convoId)) { conversations.set(convoId, { id: convoId, text: msg.isDeleted ? "🚫 Message deleted" : msg.text, timestamp: msg.timestamp }); } }); const chatList = Array.from(conversations.values()); let detailedChatList = await Promise.all(chatList.map(async (chat) => { const contact = await Contact.findOne({ ownerEmail: myEmail, friendEmail: chat.id }).lean(); const friendUser = await User.findOne({ email: chat.id }).lean(); if (!friendUser) return null; return { ...chat, nickname: contact ? contact.nickname : friendUser.displayName, avatarUrl: friendUser.avatarUrl, signature: contact ? contact.signature : 'Friends' }; })); res.json(detailedChatList.filter(Boolean)); } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
-
 app.get('/api/contacts', protectRoute, async (req, res) => { try { const myContacts = await Contact.find({ ownerEmail: req.user.email }).lean(); const detailedContacts = await Promise.all(myContacts.map(async (contact) => { const friendUser = await User.findOne({ email: contact.friendEmail }).lean(); if (!friendUser) return null; return { ...contact, status: friendUser.status, lastSeen: friendUser.lastSeen, avatarUrl: friendUser.avatarUrl, signature: contact.signature }; })); res.json(detailedContacts.filter(Boolean)); } catch (error) { res.status(500).json({ message: 'Server error' }); } });
-
 app.get('/api/messages/:id', protectRoute, async (req, res) => { const myEmail = req.user.email; const id = req.params.id; const messages = await Message.find({ $and: [ { $or: [ { senderEmail: myEmail, receiverEmail: id }, { senderEmail: id, receiverEmail: myEmail } ] }, { deletedFor: { $ne: myEmail } } ] }).sort({ timestamp: -1 }).limit(50).lean(); res.json({ messages: messages }); });
 
-app.delete('/api/message/:id', protectRoute, async (req, res) => { try { const msgId = req.params.id; const { type } = req.body; const myEmail = req.user.email; if (type === 'everyone') { const msg = await Message.findOne({ _id: msgId }); if (!msg) return res.status(404).json({message: "Not found"}); if (msg.senderEmail === myEmail) { msg.isDeleted = true; msg.text = "This message was deleted"; msg.audioData = null; await msg.save(); io.to(msg.receiverEmail).emit('message updated', msg); return res.json({ message: "Deleted for everyone", updatedMsg: msg }); } else { return res.status(403).json({ message: "Permission denied" }); } } else { await Message.updateOne({ _id: msgId }, { $push: { deletedFor: myEmail } }); res.json({ message: "Deleted for you" }); } } catch (e) { res.status(500).json({ message: "Error deleting message" }); } });
+// 🔥 CRASH PROOF DELETE ROUTE
+app.delete('/api/message/:id', protectRoute, async (req, res) => {
+    try {
+        const msgId = req.params.id;
+        const { type } = req.body; 
+        const myEmail = req.user.email;
+
+        // 🔥 SEARCH BY EITHER _id OR messageId (Prevents Crash)
+        const query = {
+            $or: [
+                { messageId: msgId },
+                // Only search by ObjectId if string is valid format
+                ...(mongoose.Types.ObjectId.isValid(msgId) ? [{ _id: msgId }] : [])
+            ]
+        };
+
+        if (type === 'everyone') {
+            const msg = await Message.findOne(query);
+            if (!msg) return res.status(404).json({message: "Message not found or already deleted"});
+            
+            if (msg.senderEmail === myEmail) {
+                msg.isDeleted = true; 
+                msg.text = "This message was deleted"; 
+                msg.audioData = null; 
+                await msg.save(); 
+                io.to(msg.receiverEmail).emit('message updated', msg); 
+                return res.json({ message: "Deleted for everyone", updatedMsg: msg }); 
+            } else { return res.status(403).json({ message: "Permission denied" }); } 
+        } else {
+            // Delete for Me
+            await Message.updateOne(query, { $push: { deletedFor: myEmail } });
+            res.json({ message: "Deleted for you" }); 
+        }
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json({ message: "Server Error during delete" }); 
+    }
+});
+
 app.delete('/api/chat/:friendId', protectRoute, async (req, res) => { try { const myEmail = req.user.email; const friendId = req.params.friendId; await Message.deleteMany({ $or: [ { senderEmail: myEmail, receiverEmail: friendId }, { senderEmail: friendId, receiverEmail: myEmail } ] }); res.json({ message: "Chat cleared" }); } catch (e) { res.status(500).json({ message: "Error clearing chat" }); } });
 // --- SOCKET ---
 io.use((socket, next) => { const token = socket.handshake.auth?.token || socket.handshake.headers.authorization?.split(" ")[1] || socket.handshake.headers.cookie?.split('token=')[1]; if (!token) return next(new Error("Auth error")); try { const decoded = jwt.verify(token, JWT_SECRET); socket.userEmail = decoded.email; next(); } catch (err) { next(new Error("Auth error")); } });
@@ -112,24 +143,7 @@ io.on('connection', async (socket) => {
     io.emit('user status update', { email, status: 'Online' });
 
     socket.on('join room', (room) => socket.join(room));
-    
-    // 🔥 Handle Audio & Text
-    socket.on('send message', async (data) => { 
-        const { receiverId, text, audioData, type } = data; // Recieve Audio
-        const senderEmail = socket.userEmail;
-        
-        const newMsg = new Message({ 
-            senderEmail, 
-            receiverEmail: receiverId, 
-            text: text || "🎤 Voice Message", 
-            type: type || 'text',
-            audioData: audioData, // Save Base64
-            timestamp: Date.now(), 
-            status: 'sent' 
-        });
-        await newMsg.save();
-        io.to(receiverId).emit('new message', { ...data, senderEmail, status: 'received', timestamp: Date.now() }); 
-    });
+    socket.on('send message', async (data) => { const { receiverId, text, type, audioData } = data; const senderEmail = socket.userEmail; const newMsg = new Message({ senderEmail, receiverEmail: receiverId, text: text || "🎤 Voice Message", type: type || 'text', audioData, timestamp: Date.now(), status: 'sent' }); await newMsg.save(); io.to(receiverId).emit('new message', { ...data, senderEmail, status: 'received', timestamp: Date.now() }); });
 
     socket.on('disconnect', async () => {
         const now = Date.now();
